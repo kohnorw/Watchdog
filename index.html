@@ -323,6 +323,17 @@
     background: rgba(46,213,115,0.2); border: 1px solid var(--success); color: var(--success);
     border-radius: 4px; letter-spacing: 1px;
   }
+  .status-badge {
+    position: absolute; bottom: 8px; left: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 2px 7px;
+    border-radius: 4px; letter-spacing: 1px;
+  }
+  .status-badge.ongoing {
+    background: rgba(71,184,255,0.15); border: 1px solid var(--accent2); color: var(--accent2);
+  }
+  .status-badge.ended {
+    background: rgba(74,81,101,0.3); border: 1px solid var(--muted); color: var(--muted);
+  }
   .card-info { padding: 10px 12px 12px; }
   .card-title { font-weight: 700; font-size: 13px; color: var(--texthi); line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-meta  { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); display: flex; gap: 8px; }
@@ -628,24 +639,39 @@
     const d = await r.json();
     if (!d.setupComplete) {
       document.getElementById('setup-overlay').classList.add('show');
-    } else if (d.running) {
-      // Watchdog already running — go straight to console
-      showMainApp();
-      populateConfigPanel();
-      switchToWatchdogMode();
     } else {
       showMainApp();
       populateConfigPanel();
+      // Replay log history first
+      await replayLogs();
+      // Start live stream after history loaded
+      startLogStream();
+      if (d.running) {
+        switchToWatchdogMode();
+      }
     }
   })();
 
   function showMainApp() {
     document.getElementById('setup-overlay').classList.remove('show');
     document.getElementById('main-app').style.display = 'block';
-    startLogStream();
   }
 
   // ── SSE Logs ──────────────────────────────────────────────────────────────
+  async function replayLogs() {
+    try {
+      const r = await fetch('/api/logs/history');
+      const entries = await r.json();
+      if (entries.length) {
+        appendLog('--:--:--', 'INFO', `── Replaying ${entries.length} log entries from this session ──`);
+        entries.forEach(e => appendLog(e.time, e.level, e.msg));
+        appendLog('--:--:--', 'INFO', '── Live log stream resuming ──');
+      }
+    } catch(e) {
+      console.warn('Could not load log history', e);
+    }
+  }
+
   let logStreamStarted = false;
   function startLogStream() {
     if (logStreamStarted) return;
@@ -839,12 +865,17 @@
       : `<div class="card-poster-placeholder">📺</div>`;
     const checkmark = show.inSonarr ? '✓' : (show.include ? '✓' : '');
     const badge = show.inSonarr ? '<div class="sonarr-badge">IN SONARR</div>' : '';
+    const statusBadge = !show.inSonarr
+      ? (show.isOngoing
+          ? '<div class="status-badge ongoing">● ONGOING</div>'
+          : '<div class="status-badge ended">✓ ENDED</div>')
+      : '';
     const profileOpts = qualityProfiles.map(p =>
       `<option value="${p.id}" ${p.id === show.qualityProfileId ? 'selected':''}>${p.name}</option>`).join('');
     const qualityHtml = !show.inSonarr && qualityProfiles.length
       ? `<div class="card-quality"><select onchange="setQuality(${show.id},this.value)" onclick="event.stopPropagation()">${profileOpts}</select></div>` : '';
     card.innerHTML = `
-      <div class="card-poster">${poster}<div class="card-check">${checkmark}</div>${badge}</div>
+      <div class="card-poster">${poster}<div class="card-check">${checkmark}</div>${badge}${statusBadge}</div>
       <div class="card-info">
         <div class="card-title" title="${esc(show.title)}">${esc(show.title)}</div>
         <div class="card-meta">
