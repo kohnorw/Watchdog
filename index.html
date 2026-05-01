@@ -628,6 +628,11 @@
     const d = await r.json();
     if (!d.setupComplete) {
       document.getElementById('setup-overlay').classList.add('show');
+    } else if (d.running) {
+      // Watchdog already running — go straight to console
+      showMainApp();
+      populateConfigPanel();
+      switchToWatchdogMode();
     } else {
       showMainApp();
       populateConfigPanel();
@@ -798,7 +803,7 @@
     scanPolling = setInterval(async () => {
       const r  = await fetch('/api/scan/status');
       const d  = await r.json();
-      document.getElementById('loading-sub').textContent = `Found ${d.count} shows so far...`;
+      document.getElementById('loading-sub').textContent = `Processing ${d.count} shows...`;
       if (d.complete) {
         clearInterval(scanPolling);
         allShows = d.results;

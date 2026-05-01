@@ -159,45 +159,53 @@ def mark_episodes_downloaded(plex_show, sonarr_series_id, title):
     """Cross-reference Plex episodes against Sonarr and mark as downloaded."""
     try:
         sonarr_episodes = sonarr_get(f"episode?seriesId={sonarr_series_id}")
-        sonarr_ep_files = {ef["id"] for ef in sonarr_get(f"episodefile?seriesId={sonarr_series_id}")}
+        existing_files  = sonarr_get(f"episodefile?seriesId={sonarr_series_id}")
+        sonarr_ep_file_ids = {ef["id"] for ef in existing_files}
     except Exception as e:
-        logger.error(f"  Failed to fetch Sonarr episodes for '{title}': {e}")
+        logger.error(f"  ❌ Failed to fetch Sonarr data for '{title}': {e}")
         return 0, 0
 
-    # Build a map of (season, episode) -> sonarr episode object
+    # Build map (season, episode) -> sonarr episode
     sonarr_ep_map = {}
     for ep in sonarr_episodes:
         key = (ep["seasonNumber"], ep["episodeNumber"])
         sonarr_ep_map[key] = ep
 
-    marked = 0
-    missing = 0
+    plex_ep_count    = 0
+    already_marked   = 0
+    newly_marked     = 0
+    not_in_sonarr    = 0
+    mark_failed      = 0
 
     for plex_season in plex_show.seasons():
         season_num = plex_season.seasonNumber
         if season_num == 0:
             continue  # skip specials
         for plex_ep in plex_season.episodes():
-            ep_num = plex_ep.seasonEpisode  # e.g. S01E03
             ep_index = plex_ep.index
+            plex_ep_count += 1
             key = (season_num, ep_index)
 
             sonarr_ep = sonarr_ep_map.get(key)
             if not sonarr_ep:
-                missing += 1
+                not_in_sonarr += 1
+                logger.debug(f"    ⚠ S{season_num:02}E{ep_index:02} not found in Sonarr for '{title}'")
                 continue
 
-            # Already has a file in Sonarr — skip
-            if sonarr_ep.get("hasFile") or sonarr_ep.get("episodeFileId") in sonarr_ep_files:
+            # Already tracked by Sonarr
+            if sonarr_ep.get("hasFile") or sonarr_ep.get("episodeFileId") in sonarr_ep_file_ids:
+                already_marked += 1
                 continue
 
             # Get file path from Plex
             try:
                 file_path = plex_ep.media[0].parts[0].file
             except (IndexError, AttributeError):
+                logger.warning(f"    ⚠ No file path for S{season_num:02}E{ep_index:02} of '{title}'")
+                mark_failed += 1
                 continue
 
-            # Tell Sonarr about this file via ManualImport command
+            # Tell Sonarr about this file
             try:
                 payload = {
                     "name": "ManualImport",
@@ -211,12 +219,25 @@ def mark_episodes_downloaded(plex_show, sonarr_series_id, title):
                     "importMode": "auto"
                 }
                 sonarr_post("command", payload)
-                marked += 1
-                logger.debug(f"    ✓ Marked S{season_num:02}E{ep_index:02} of '{title}'")
+                newly_marked += 1
+                logger.info(f"    ✅ Marked S{season_num:02}E{ep_index:02} downloaded — {file_path}")
             except Exception as e:
-                logger.warning(f"    Could not mark S{season_num:02}E{ep_index:02} of '{title}': {e}")
+                mark_failed += 1
+                logger.warning(f"    ❌ Failed to mark S{season_num:02}E{ep_index:02} of '{title}': {e}")
 
-    return marked, missing
+    # Per-show summary
+    if newly_marked or mark_failed:
+        logger.info(
+            f"  📺 '{title}' — {plex_ep_count} in Plex | "
+            f"{already_marked} already in Sonarr | "
+            f"{newly_marked} newly marked | "
+            f"{not_in_sonarr} not in Sonarr | "
+            f"{mark_failed} failed"
+        )
+    else:
+        logger.debug(f"  ✓ '{title}' — {already_marked}/{plex_ep_count} already tracked, nothing new")
+
+    return newly_marked, not_in_sonarr
 
 def do_episode_index(plex, sonarr_map):
     """Index all Plex episodes and mark them as downloaded in Sonarr."""
@@ -281,7 +302,6 @@ def do_scan():
     shows = tv_lib.all()
     logger.info(f"📺 Found {len(shows)} shows in Plex — enriching with TMDB...")
 
-    results = []
     for i, show in enumerate(shows):
         tvdb_id = None
         for guid in show.guids:
@@ -315,12 +335,11 @@ def do_scan():
             "seasons": len(show.seasons()),
             "episodes": sum(len(s.episodes()) for s in show.seasons()),
         }
-        results.append(entry)
-        if (i + 1) % 10 == 0:
+        scan_results.append(entry)  # append live so UI count updates
+        if (i + 1) % 5 == 0:
             logger.info(f"  Processed {i+1}/{len(shows)} shows...")
 
-    results.sort(key=lambda x: (x["inSonarr"], x["title"]))
-    scan_results = results
+    scan_results.sort(key=lambda x: (x["inSonarr"], x["title"]))
     scan_complete = True
     new_count = sum(1 for r in results if not r["inSonarr"])
     logger.info(f"✅ Scan complete. {len(results)} shows found, {new_count} not in Sonarr.")
