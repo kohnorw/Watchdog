@@ -193,12 +193,11 @@ def add_series_to_sonarr(show, quality_profile_id):
             seasons = [dict(s, monitored=True) for s in lookup.get("seasons", [])]
             logger.info(f"  📡 '{title}' is ongoing ({status_str}) — monitoring all episodes")
         else:
-            # Ended — series monitored so existing episodes register as downloaded,
-            # but we use monitor mode "existing" so Sonarr won't search for anything new
-            monitor_mode    = "existing"
-            series_monitored = True
-            seasons = [dict(s, monitored=True) for s in lookup.get("seasons", [])]
-            logger.info(f"  🏁 '{title}' has ended ({status_str}) — monitoring existing episodes only")
+            # Ended — set to none so Sonarr won't monitor or search for anything
+            monitor_mode    = "none"
+            series_monitored = False
+            seasons = [dict(s, monitored=False) for s in lookup.get("seasons", [])]
+            logger.info(f"  🏁 '{title}' has ended ({status_str}) — setting monitor to none")
 
         payload = {
             "title":            lookup["title"],
