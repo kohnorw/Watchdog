@@ -49,7 +49,10 @@ def save_config_to_disk(cfg):
 CONFIG = load_config()
 
 # ── State ─────────────────────────────────────────────────────────────────────
-log_queue = queue.Queue()
+log_queue    = queue.Queue()
+log_history  = []           # persists across page refreshes (capped at 2000)
+LOG_HISTORY_MAX = 2000
+
 scan_results = []
 scan_complete = False
 scan_approved = False
@@ -60,9 +63,13 @@ first_run = True
 # ── Logging ───────────────────────────────────────────────────────────────────
 class QueueHandler(logging.Handler):
     def emit(self, record):
-        msg = self.format(record)
+        msg   = self.format(record)
         level = record.levelname
-        log_queue.put({"time": datetime.now().strftime("%H:%M:%S"), "level": level, "msg": msg})
+        entry = {"time": datetime.now().strftime("%H:%M:%S"), "level": level, "msg": msg}
+        log_queue.put(entry)
+        log_history.append(entry)
+        if len(log_history) > LOG_HISTORY_MAX:
+            log_history.pop(0)
 
 logger = logging.getLogger("watchdog")
 logger.setLevel(logging.DEBUG)
@@ -119,37 +126,102 @@ def get_sonarr_series_map():
     series = sonarr_get("series")
     return {s["tvdbId"]: s for s in series if s.get("tvdbId")}
 
+# Statuses considered "still airing" — monitor for new episodes
+ONGOING_STATUSES = {"returning series", "in production", "planned", "pilot", "continuing"}
+
+def get_show_status(tvdb_id, title, tmdb_id=None):
+    """
+    Returns (is_ongoing, status_str).
+    Checks TMDB first (most reliable), falls back to Sonarr lookup data.
+    """
+    # Try TMDB
+    key = CONFIG.get("TMDB_API_KEY", "")
+    if key:
+        try:
+            # Use tvdb external lookup if we have it
+            search_id = tmdb_id
+            if not search_id and tvdb_id:
+                r = requests.get(
+                    f"https://api.themoviedb.org/3/find/{tvdb_id}",
+                    params={"api_key": key, "external_source": "tvdb_id"}, timeout=8)
+                results = r.json().get("tv_results", [])
+                if results:
+                    search_id = results[0]["id"]
+            if search_id:
+                r = requests.get(
+                    f"https://api.themoviedb.org/3/tv/{search_id}",
+                    params={"api_key": key}, timeout=8)
+                data = r.json()
+                status = data.get("status", "").lower()
+                is_ongoing = status in ONGOING_STATUSES
+                return is_ongoing, status
+        except Exception as e:
+            logger.debug(f"TMDB status check failed for '{title}': {e}")
+
+    # Fallback: use Sonarr lookup status field
+    try:
+        results = sonarr_get(f"series/lookup?term=tvdb:{tvdb_id}")
+        if results:
+            status = results[0].get("status", "").lower()
+            # Sonarr uses: continuing, ended, upcoming, deleted
+            is_ongoing = status in {"continuing", "upcoming"}
+            return is_ongoing, status
+    except Exception as e:
+        logger.debug(f"Sonarr status fallback failed for '{title}': {e}")
+
+    # Unknown — default to monitored to be safe
+    return True, "unknown"
+
 def add_series_to_sonarr(show, quality_profile_id):
     tvdb_id = show["tvdbId"]
-    title = show["title"]
+    title   = show["title"]
     try:
         results = sonarr_get(f"series/lookup?term=tvdb:{tvdb_id}")
         if not results:
             logger.warning(f"No Sonarr lookup result for TVDB:{tvdb_id} '{title}'")
             return False
         lookup = results[0]
+
+        # Determine monitoring based on show status
+        is_ongoing, status_str = get_show_status(tvdb_id, title, tmdb_id=show.get("tmdbId"))
+
+        if is_ongoing:
+            # Ongoing — monitor everything, Sonarr will grab new episodes as they air
+            monitor_mode    = "all"
+            series_monitored = True
+            seasons = [dict(s, monitored=True) for s in lookup.get("seasons", [])]
+            logger.info(f"  📡 '{title}' is ongoing ({status_str}) — monitoring all episodes")
+        else:
+            # Ended — series monitored so existing episodes register as downloaded,
+            # but we use monitor mode "existing" so Sonarr won't search for anything new
+            monitor_mode    = "existing"
+            series_monitored = True
+            seasons = [dict(s, monitored=True) for s in lookup.get("seasons", [])]
+            logger.info(f"  🏁 '{title}' has ended ({status_str}) — monitoring existing episodes only")
+
         payload = {
-            "title": lookup["title"],
-            "tvdbId": tvdb_id,
+            "title":            lookup["title"],
+            "tvdbId":           tvdb_id,
             "qualityProfileId": show.get("qualityProfileId", quality_profile_id),
-            "rootFolderPath": CONFIG["SONARR_ROOT_FOLDER"],
-            "seasonFolder": True,
-            "monitored": True,
+            "rootFolderPath":   CONFIG["SONARR_ROOT_FOLDER"],
+            "seasonFolder":     True,
+            "monitored":        series_monitored,
             "addOptions": {
-                "searchForMissingEpisodes": False,
+                "searchForMissingEpisodes":     False,
                 "searchForCutoffUnmetEpisodes": False,
-                "monitor": "all"
+                "monitor":                      monitor_mode,
             },
-            "seasons": lookup.get("seasons", []),
-            "images": lookup.get("images", []),
-            "path": f"{CONFIG['SONARR_ROOT_FOLDER']}/{lookup['title']}",
+            "seasons": seasons,
+            "images":  lookup.get("images", []),
+            "path":    f"{CONFIG['SONARR_ROOT_FOLDER']}/{lookup['title']}",
         }
         sonarr_post("series", payload)
-        logger.info(f"✅ Added to Sonarr: {title} (TVDB:{tvdb_id})")
+        status_icon = "📡" if is_ongoing else "🏁"
+        logger.info(f"✅ {status_icon} Added: {title} (TVDB:{tvdb_id}) [{status_str}] monitor={monitor_mode}")
         return True
     except requests.HTTPError as e:
         if e.response.status_code == 400:
-            logger.info(f"Already exists: {title}")
+            logger.info(f"Already exists in Sonarr: {title}")
         else:
             logger.error(f"Failed to add {title}: {e}")
         return False
@@ -265,8 +337,14 @@ def do_episode_index(plex, sonarr_map):
         if not tvdb_id or tvdb_id not in sonarr_map:
             continue
 
+        # Only import episodes for ongoing shows — ended shows are already complete
+        is_ongoing, status_str = get_show_status(tvdb_id, show.title)
+        if not is_ongoing:
+            logger.debug(f"  ⏭ Skipping episode import for ended show: {show.title} [{status_str}]")
+            continue
+
         sonarr_series = sonarr_map[tvdb_id]
-        logger.info(f"  🔎 Indexing: {show.title}")
+        logger.info(f"  🔎 Indexing: {show.title} [{status_str}]")
         marked, missing = mark_episodes_downloaded(show, sonarr_series["id"], show.title)
         total_marked  += marked
         total_missing += missing
@@ -320,6 +398,13 @@ def do_scan():
         first_air = tmdb.get("first_air_date", "")
         vote = tmdb.get("vote_average", 0)
 
+        # Get show status for monitoring logic
+        tmdb_status = tmdb.get("status", "").lower()
+        if tmdb_status:
+            is_ongoing = tmdb_status in ONGOING_STATUSES
+        else:
+            is_ongoing = True  # unknown, default to monitored
+
         entry = {
             "id": i,
             "title": show.title,
@@ -334,6 +419,8 @@ def do_scan():
             "qualityProfileId": quality_profile_id,
             "seasons": len(show.seasons()),
             "episodes": sum(len(s.episodes()) for s in show.seasons()),
+            "isOngoing": is_ongoing,
+            "showStatus": tmdb_status or "unknown",
         }
         scan_results.append(entry)  # append live so UI count updates
         if (i + 1) % 5 == 0:
@@ -511,6 +598,11 @@ def api_watchdog_stop():
 def api_watchdog_status():
     return jsonify({"running": watchdog_running, "firstRun": first_run,
                     "scanComplete": scan_complete, "setupComplete": CONFIG.get("SETUP_COMPLETE", False)})
+
+@app.route("/api/logs/history")
+def api_logs_history():
+    """Return all buffered log entries for page reload replay."""
+    return jsonify(log_history)
 
 @app.route("/api/logs/stream")
 def api_logs_stream():
