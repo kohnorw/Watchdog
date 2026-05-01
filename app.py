@@ -25,6 +25,7 @@ CONFIG_DEFAULTS = {
     "TMDB_API_KEY":           "",
     "POLL_INTERVAL":          30,
     "SETUP_COMPLETE":         False,
+    "INITIAL_SCAN_DONE":      False,
 }
 
 def load_config():
@@ -440,7 +441,6 @@ def do_watchdog_loop():
             sonarr_map = get_sonarr_series_map()
             quality_profile_id = get_quality_profile_id()
             shows = tv_lib.all()
-            added_new = False
             for show in shows:
                 tvdb_id = None
                 for guid in show.guids:
@@ -450,18 +450,52 @@ def do_watchdog_loop():
                         except ValueError:
                             pass
                 if tvdb_id and tvdb_id not in sonarr_map:
-                    logger.info(f"🆕 New show detected: {show.title}")
+                    logger.info(f"🆕 New show detected in Plex: {show.title}")
                     entry = {"title": show.title, "tvdbId": tvdb_id,
                              "qualityProfileId": quality_profile_id}
                     add_series_to_sonarr(entry, quality_profile_id)
-                    added_new = True
-            # Refresh sonarr map and run episode index every pass
-            sonarr_map = get_sonarr_series_map()
-            do_episode_index(plex, sonarr_map)
             logger.info(f"💤 Sleeping {CONFIG['POLL_INTERVAL']}s...")
         except Exception as e:
             logger.error(f"Watchdog error: {e}")
         time.sleep(CONFIG["POLL_INTERVAL"])
+
+def auto_start_watchdog():
+    """On restart, auto-scan Plex for new shows and start watchdog loop."""
+    global watchdog_running, watchdog_thread, first_run
+    logger.info("🔄 Auto-start: previous scan detected, scanning for new shows...")
+    try:
+        plex = PlexServer(CONFIG["PLEX_URL"], CONFIG["PLEX_TOKEN"])
+        tv_lib = plex.library.section(CONFIG["PLEX_TV_LIBRARY"])
+        sonarr_map = get_sonarr_series_map()
+        quality_profile_id = get_quality_profile_id()
+        shows = tv_lib.all()
+        added = 0
+        for show in shows:
+            tvdb_id = None
+            for guid in show.guids:
+                if "tvdb://" in guid.id:
+                    try:
+                        tvdb_id = int(guid.id.replace("tvdb://", ""))
+                    except ValueError:
+                        pass
+            if not tvdb_id or tvdb_id in sonarr_map:
+                continue
+            logger.info(f"  🆕 New show found: {show.title}")
+            entry = {"title": show.title, "tvdbId": tvdb_id, "qualityProfileId": quality_profile_id}
+            add_series_to_sonarr(entry, quality_profile_id)
+            added += 1
+            time.sleep(0.3)
+        if added:
+            logger.info(f"✅ Auto-start: added {added} new shows to Sonarr")
+        else:
+            logger.info("✅ Auto-start: no new shows found, Sonarr is up to date")
+    except Exception as e:
+        logger.error(f"Auto-start scan failed: {e}")
+    logger.info("🐕 Starting watchdog loop...")
+    first_run = False
+    watchdog_running = True
+    watchdog_thread = threading.Thread(target=do_watchdog_loop, daemon=True)
+    watchdog_thread.start()
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -556,14 +590,9 @@ def api_approve():
         for show in to_add:
             add_series_to_sonarr(show, quality_profile_id)
             time.sleep(0.5)
-        logger.info("✅ Series import complete. Now indexing episodes...")
-        time.sleep(3)  # give Sonarr a moment to settle
-        try:
-            plex = PlexServer(CONFIG["PLEX_URL"], CONFIG["PLEX_TOKEN"])
-            sonarr_map = get_sonarr_series_map()
-            do_episode_index(plex, sonarr_map)
-        except Exception as e:
-            logger.error(f"Episode indexing failed: {e}")
+        logger.info("✅ Series import complete. Use 'Connect Files' on each series to link Plex files.")
+        CONFIG["INITIAL_SCAN_DONE"] = True
+        save_config_to_disk(CONFIG)
         logger.info("🐕 Starting watchdog loop...")
         first_run = False
         watchdog_running = True
@@ -574,16 +603,65 @@ def api_approve():
     t.start()
     return jsonify({"ok": True})
 
-@app.route("/api/episode-index", methods=["POST"])
-def api_episode_index():
-    """Manually trigger an episode index pass."""
+@app.route("/api/series/list")
+def api_series_list():
+    """Return all series in Sonarr with their Plex match status."""
+    try:
+        sonarr_series = sonarr_get("series")
+        series_list = []
+        for s in sonarr_series:
+            series_list.append({
+                "id":       s["id"],
+                "title":    s["title"],
+                "tvdbId":   s.get("tvdbId"),
+                "status":   s.get("status", ""),
+                "monitored": s.get("monitored", False),
+                "episodeCount":    s.get("statistics", {}).get("episodeCount", 0),
+                "episodeFileCount": s.get("statistics", {}).get("episodeFileCount", 0),
+                "seasons":  s.get("seasonCount", 0),
+            })
+        series_list.sort(key=lambda x: x["title"])
+        return jsonify(series_list)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/series/<int:sonarr_id>/connect", methods=["POST"])
+def api_series_connect(sonarr_id):
+    """Connect Plex files for a single series into Sonarr."""
     def run():
         try:
-            plex = PlexServer(CONFIG["PLEX_URL"], CONFIG["PLEX_TOKEN"])
-            sonarr_map = get_sonarr_series_map()
-            do_episode_index(plex, sonarr_map)
+            # Get series info from Sonarr
+            series = sonarr_get(f"series/{sonarr_id}")
+            title   = series["title"]
+            tvdb_id = series.get("tvdbId")
+            logger.info(f"🔗 Connecting files for: {title}")
+
+            # Find it in Plex
+            plex    = PlexServer(CONFIG["PLEX_URL"], CONFIG["PLEX_TOKEN"])
+            tv_lib  = plex.library.section(CONFIG["PLEX_TV_LIBRARY"])
+            plex_show = None
+
+            for show in tv_lib.all():
+                for guid in show.guids:
+                    if "tvdb://" in guid.id:
+                        try:
+                            if int(guid.id.replace("tvdb://", "")) == tvdb_id:
+                                plex_show = show
+                                break
+                        except ValueError:
+                            pass
+                if plex_show:
+                    break
+
+            if not plex_show:
+                logger.warning(f"  ⚠ '{title}' not found in Plex library")
+                return
+
+            marked, missing = mark_episodes_downloaded(plex_show, sonarr_id, title)
+            logger.info(f"  ✅ Connect complete for '{title}' — {marked} episodes marked, {missing} not in Sonarr")
         except Exception as e:
-            logger.error(f"Manual episode index failed: {e}")
+            logger.error(f"Connect failed for series {sonarr_id}: {e}")
+
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"ok": True})
 
@@ -597,7 +675,9 @@ def api_watchdog_stop():
 @app.route("/api/watchdog/status")
 def api_watchdog_status():
     return jsonify({"running": watchdog_running, "firstRun": first_run,
-                    "scanComplete": scan_complete, "setupComplete": CONFIG.get("SETUP_COMPLETE", False)})
+                    "scanComplete": scan_complete,
+                    "setupComplete": CONFIG.get("SETUP_COMPLETE", False),
+                    "initialScanDone": CONFIG.get("INITIAL_SCAN_DONE", False)})
 
 @app.route("/api/logs/history")
 def api_logs_history():
@@ -626,4 +706,9 @@ def api_quality_profiles():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
+    # Auto-start watchdog on restart if initial scan was already completed
+    if CONFIG.get("INITIAL_SCAN_DONE") and CONFIG.get("SETUP_COMPLETE"):
+        logger.info("🔁 Detected previous completed scan — auto-starting watchdog...")
+        t = threading.Thread(target=auto_start_watchdog, daemon=True)
+        t.start()
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
