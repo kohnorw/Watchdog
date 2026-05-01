@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watchdog — Plex → Sonarr</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0b0d;
+    --surface: #111318;
+    --border:  #1e2129;
+    --border2: #2a2f3a;
+    --accent:  #e8ff47;
+    --accent2: #47b8ff;
+    --danger:  #ff4757;
+    --success: #2ed573;
+    --muted:   #4a5165;
+    --text:    #c8cdd8;
+    --texthi:  #f0f2f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
+
+  /* ── SETUP WIZARD ── */
+  #setup-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 500;
+    overflow-y: auto;
+    padding: 40px 20px;
+  }
+  #setup-overlay.show { display: flex; align-items: flex-start; justify-content: center; }
+  .setup-card {
+    width: 100%;
+    max-width: 640px;
+    margin: auto;
+  }
+  .setup-logo {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .setup-logo .icon {
+    font-size: 56px;
+    display: block;
+    margin-bottom: 12px;
+  }
+  .setup-logo h1 {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--texthi);
+    letter-spacing: -1px;
+  }
+  .setup-logo p {
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin-top: 6px;
+    letter-spacing: 1px;
+  }
+
+  .setup-steps {
+    display: flex;
+    gap: 0;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .setup-step-tab {
+    flex: 1;
+    padding: 12px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+  .setup-step-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .setup-step-tab.done   { color: var(--success); }
+
+  .setup-page { display: none; }
+  .setup-page.active { display: block; }
+
+  .setup-section-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--texthi);
+    margin-bottom: 6px;
+  }
+  .setup-section-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+  .setup-section-sub a { color: var(--accent2); text-decoration: none; }
+  .setup-section-sub a:hover { text-decoration: underline; }
+
+  .field-group { margin-bottom: 16px; }
+  .field-group label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+  }
+  .field-group input, .field-group select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--texthi);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-group input:focus, .field-group select:focus { border-color: var(--accent); }
+  .field-group input.error { border-color: var(--danger); }
+  .field-group input.valid { border-color: var(--success); }
+  .field-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .test-btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 8px;
+  }
+  .test-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .test-result {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    display: none;
+  }
+  .test-result.show { display: block; }
+  .test-result.success { background: rgba(46,213,115,0.1); border: 1px solid var(--success); color: var(--success); }
+  .test-result.fail    { background: rgba(255,71,87,0.1);  border: 1px solid var(--danger);  color: var(--danger); }
+
+  .setup-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    gap: 12px;
+  }
+
+  /* ── SHARED BUTTONS ── */
+  .btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 22px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-primary   { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #f0ff60; transform: translateY(-1px); }
+  .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border2); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-success   { background: var(--success); color: #000; }
+  .btn-success:hover { background: #3dff87; }
+  .btn-danger    { background: var(--danger); color: #fff; }
+  .btn-sm { font-size: 11px; padding: 6px 14px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+  .btn-full { width: 100%; }
+
+  /* ── MAIN APP ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+    background: rgba(10,11,13,0.95);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .logo-text { font-size: 22px; font-weight: 800; color: var(--texthi); letter-spacing: -0.5px; }
+  .logo-sub  { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .status-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .status-pill.running  { border-color: var(--success); color: var(--success); }
+  .status-pill.scanning { border-color: var(--accent);  color: var(--accent); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* config panel */
+  #config-panel {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: none;
+  }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+  .config-field label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px;
+  }
+  .config-field input, .config-field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--texthi);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 12px; outline: none; transition: border-color 0.15s;
+  }
+  .config-field input:focus { border-color: var(--accent); }
+  .section-title {
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content:''; flex:1; height:1px; background: var(--border); }
+
+  /* scan bar */
+  #scan-bar {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .scan-stats { display: flex; gap: 24px; flex: 1; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat-val { font-size: 24px; font-weight: 800; color: var(--texthi); line-height: 1; }
+  .stat-val.accent { color: var(--accent); }
+  .stat-val.blue   { color: var(--accent2); }
+  .stat-val.green  { color: var(--success); }
+  .stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+  /* shows */
+  #shows-section { padding: 24px 32px; flex: 1; }
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .filter-bar input {
+    background: var(--surface); border: 1px solid var(--border2); border-radius: 6px;
+    color: var(--texthi); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    padding: 8px 14px; outline: none; flex: 1; min-width: 200px; transition: border-color 0.15s;
+  }
+  .filter-bar input:focus { border-color: var(--accent); }
+  .filter-tabs { display: flex; gap: 4px; }
+  .filter-tab {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border2);
+    background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .filter-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(232,255,71,0.07); }
+  .bulk-actions { display: flex; gap: 8px; margin-left: auto; }
+
+  .shows-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .show-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; transition: all 0.2s; cursor: pointer; position: relative;
+  }
+  .show-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+  .show-card.selected  { border-color: var(--accent); }
+  .show-card.excluded  { opacity: 0.4; }
+  .show-card.in-sonarr { border-color: var(--border); cursor: default; }
+  .card-poster { width: 100%; aspect-ratio: 2/3; background: var(--border); position: relative; overflow: hidden; }
+  .card-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card-poster-placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    font-size: 36px; background: linear-gradient(135deg, #1a1d25 0%, #0f1117 100%); color: var(--muted);
+  }
+  .card-check {
+    position: absolute; top: 8px; right: 8px; width: 26px; height: 26px;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+    font-size: 13px; backdrop-filter: blur(4px); transition: all 0.15s;
+  }
+  .show-card.selected .card-check  { background: var(--accent); border-color: var(--accent); color: #000; }
+  .show-card.in-sonarr .card-check { background: var(--success); border-color: var(--success); color: #000; }
+  .sonarr-badge {
+    position: absolute; bottom: 8px; left: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 2px 7px;
+    background: rgba(46,213,115,0.2); border: 1px solid var(--success); color: var(--success);
+    border-radius: 4px; letter-spacing: 1px;
+  }
+  .card-info { padding: 10px 12px 12px; }
+  .card-title { font-weight: 700; font-size: 13px; color: var(--texthi); line-height: 1.3; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-meta  { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); display: flex; gap: 8px; }
+  .card-rating { color: var(--accent); }
+  .card-quality { margin-top: 8px; }
+  .card-quality select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; padding: 4px 8px; outline: none;
+  }
+
+  /* console */
+  #console-section { margin: 0 32px 32px; border: 1px solid var(--border2); border-radius: 10px; overflow: hidden; background: #080a0c; }
+  .console-header {
+    padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .console-dots { display: flex; gap: 6px; }
+  .console-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .console-dot.red    { background: #ff5f57; }
+  .console-dot.yellow { background: #febc2e; }
+  .console-dot.green  { background: #28c840; }
+  .console-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); flex: 1; text-align: center; letter-spacing: 1px; }
+  .console-clear { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; }
+  .console-clear:hover { color: var(--accent); }
+  #console-output { height: 260px; overflow-y: auto; padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; }
+  #console-output::-webkit-scrollbar { width: 4px; }
+  #console-output::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-line { display: flex; gap: 10px; }
+  .log-time  { color: var(--muted); flex-shrink: 0; }
+  .log-level { flex-shrink: 0; width: 52px; text-align: right; }
+  .log-level.INFO    { color: var(--accent2); }
+  .log-level.WARNING { color: #ffa502; }
+  .log-level.ERROR   { color: var(--danger); }
+  .log-level.DEBUG   { color: var(--muted); }
+  .log-msg { color: var(--text); word-break: break-all; }
+
+  /* approve bar */
+  #approve-bar {
+    position: sticky; bottom: 0;
+    background: rgba(10,11,13,0.97); border-top: 1px solid var(--border2);
+    padding: 16px 32px; display: none;
+    align-items: center; gap: 16px; backdrop-filter: blur(12px); z-index: 50;
+  }
+  .approve-info { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+  .approve-info strong { color: var(--accent); }
+
+  /* loading */
+  #loading-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(10,11,13,0.85); z-index: 300;
+    align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+    backdrop-filter: blur(6px);
+  }
+  #loading-overlay.show { display: flex; }
+  .spinner { width: 48px; height: 48px; border: 3px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent); letter-spacing: 1px; }
+  .loading-sub  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  /* empty state */
+  #empty-state { padding: 80px 32px; text-align: center; }
+  #empty-state .big-icon { font-size: 64px; margin-bottom: 16px; }
+  #empty-state h2 { font-size: 22px; font-weight: 800; color: var(--texthi); margin-bottom: 8px; }
+  #empty-state p  { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SETUP WIZARD ══════════════ -->
+<div id="setup-overlay">
+  <div class="setup-card">
+    <div class="setup-logo">
+      <span class="icon">🐕</span>
+      <h1>Watchdog</h1>
+      <p>PLEX → SONARR BRIDGE · FIRST TIME SETUP</p>
+    </div>
+
+    <div class="setup-steps">
+      <div class="setup-step-tab active" id="tab-1">1 · PLEX</div>
+      <div class="setup-step-tab"        id="tab-2">2 · SONARR</div>
+      <div class="setup-step-tab"        id="tab-3">3 · TMDB</div>
+      <div class="setup-step-tab"        id="tab-4">4 · DONE</div>
+    </div>
+
+    <!-- Page 1: Plex -->
+    <div class="setup-page active" id="page-1">
+      <div class="setup-section-title">Plex Connection</div>
+      <div class="setup-section-sub">
+        Enter your Plex server URL and token. Find your token at
+        <a href="https://support.plex.tv/articles/204059436" target="_blank">support.plex.tv</a>
+        — look for <code>X-Plex-Token</code> in a media info XML URL.
+      </div>
+      <div class="field-group">
+        <label>Plex Server URL</label>
+        <input type="text" id="s-plex-url" placeholder="http://192.168.1.x:32400" value="{{ config.PLEX_URL }}">
+        <div class="field-hint">Include http:// and port 32400</div>
+      </div>
+      <div class="field-group">
+        <label>Plex Token</label>
+        <input type="password" id="s-plex-token" placeholder="xxxxxxxxxxxxxxxxxxxx" value="{{ config.PLEX_TOKEN }}">
+      </div>
+      <div class="field-group">
+        <label>TV Library Name</label>
+        <input type="text" id="s-plex-library" placeholder="TV Shows" value="{{ config.PLEX_TV_LIBRARY }}">
+        <div class="field-hint">Must match exactly as it appears in Plex</div>
+      </div>
+      <button class="test-btn" onclick="testPlex()">
+        <span id="plex-test-spinner"></span> 🔌 Test Plex Connection
+      </button>
+      <div class="test-result" id="plex-test-result"></div>
+      <div class="setup-nav">
+        <div></div>
+        <button class="btn btn-primary" onclick="goToPage(2)">Next → Sonarr</button>
+      </div>
+    </div>
+
+    <!-- Page 2: Sonarr -->
+    <div class="setup-page" id="page-2">
+      <div class="setup-section-title">Sonarr Connection</div>
+      <div class="setup-section-sub">
+        Find your API key in Sonarr → Settings → General → Security.
+      </div>
+      <div class="field-group">
+        <label>Sonarr URL</label>
+        <input type="text" id="s-sonarr-url" placeholder="http://192.168.1.x:8989" value="{{ config.SONARR_URL }}">
+      </div>
+      <div class="field-group">
+        <label>Sonarr API Key</label>
+        <input type="password" id="s-sonarr-key" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="{{ config.SONARR_API_KEY }}">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Root Folder Path</label>
+          <input type="text" id="s-root-folder" placeholder="/tv" value="{{ config.SONARR_ROOT_FOLDER }}">
+        </div>
+        <div class="field-group">
+          <label>Default Quality Profile</label>
+          <input type="text" id="s-quality" placeholder="HD-1080p" value="{{ config.SONARR_QUALITY_PROFILE }}">
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Poll Interval (seconds)</label>
+        <input type="number" id="s-interval" placeholder="30" value="{{ config.POLL_INTERVAL }}">
+        <div class="field-hint">How often Watchdog checks Plex for new shows after initial setup</div>
+      </div>
+      <button class="test-btn" onclick="testSonarr()">🔌 Test Sonarr Connection</button>
+      <div class="test-result" id="sonarr-test-result"></div>
+      <div class="setup-nav">
+        <button class="btn btn-secondary" onclick="goToPage(1)">← Back</button>
+        <button class="btn btn-primary" onclick="goToPage(3)">Next → TMDB</button>
+      </div>
+    </div>
+
+    <!-- Page 3: TMDB -->
+    <div class="setup-page" id="page-3">
+      <div class="setup-section-title">TMDB (Optional)</div>
+      <div class="setup-section-sub">
+        A free TMDB API key gives Watchdog access to show posters, ratings, and overviews.
+        Get one at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a>.
+        You can skip this and add it later.
+      </div>
+      <div class="field-group">
+        <label>TMDB API Key</label>
+        <input type="password" id="s-tmdb" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="{{ config.TMDB_API_KEY }}">
+      </div>
+      <button class="test-btn" onclick="testTmdb()">🔌 Test TMDB Key</button>
+      <div class="test-result" id="tmdb-test-result"></div>
+      <div class="setup-nav">
+        <button class="btn btn-secondary" onclick="goToPage(2)">← Back</button>
+        <button class="btn btn-primary" onclick="saveSetup()">Save & Continue →</button>
+      </div>
+    </div>
+
+    <!-- Page 4: Done -->
+    <div class="setup-page" id="page-4">
+      <div style="text-align:center; padding: 40px 0;">
+        <div style="font-size:64px; margin-bottom:20px;">✅</div>
+        <div class="setup-section-title" style="justify-content:center; font-size:24px;">All Set!</div>
+        <div class="setup-section-sub" style="margin-top:10px;">
+          Config saved. Click below to start scanning your Plex library.
+        </div>
+        <button class="btn btn-success" style="margin-top:24px; padding:14px 36px; font-size:15px;" onclick="launchApp()">
+          🚀 Launch Watchdog
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LOADING OVERLAY ══════════════ -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">SCANNING PLEX LIBRARY</div>
+  <div class="loading-sub"  id="loading-sub">This may take a minute...</div>
+</div>
+
+<!-- ══════════════ MAIN APP ══════════════ -->
+<div id="main-app" style="display:none">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🐕</div>
+      <div>
+        <div class="logo-text">Watchdog</div>
+        <div class="logo-sub">Plex → Sonarr Bridge</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-pill" id="watchdog-status-pill"><div class="dot"></div> IDLE</div>
+      <button class="btn btn-secondary btn-sm" onclick="toggleConfig()">⚙ Config</button>
+      <button class="btn btn-secondary btn-sm" id="stop-btn" onclick="stopWatchdog()" style="display:none">■ Stop</button>
+    </div>
+  </header>
+
+  <div id="config-panel">
+    <div class="section-title">Configuration</div>
+    <div class="config-grid">
+      <div class="config-field"><label>Plex URL</label><input type="text" id="cfg-plex-url"></div>
+      <div class="config-field"><label>Plex Token</label><input type="password" id="cfg-plex-token"></div>
+      <div class="config-field"><label>Plex TV Library</label><input type="text" id="cfg-plex-library"></div>
+      <div class="config-field"><label>Sonarr URL</label><input type="text" id="cfg-sonarr-url"></div>
+      <div class="config-field"><label>Sonarr API Key</label><input type="password" id="cfg-sonarr-key"></div>
+      <div class="config-field"><label>Root Folder</label><input type="text" id="cfg-root-folder"></div>
+      <div class="config-field"><label>Quality Profile</label><input type="text" id="cfg-quality"></div>
+      <div class="config-field"><label>TMDB API Key</label><input type="password" id="cfg-tmdb"></div>
+      <div class="config-field"><label>Poll Interval (s)</label><input type="number" id="cfg-interval"></div>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:10px;">
+      <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+      <button class="btn btn-secondary" onclick="toggleConfig()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="scan-bar">
+    <div class="scan-stats">
+      <div class="stat"><div class="stat-val" id="stat-total">—</div><div class="stat-label">In Plex</div></div>
+      <div class="stat"><div class="stat-val accent" id="stat-new">—</div><div class="stat-label">Not in Sonarr</div></div>
+      <div class="stat"><div class="stat-val green" id="stat-sonarr">—</div><div class="stat-label">In Sonarr</div></div>
+      <div class="stat"><div class="stat-val blue" id="stat-selected">—</div><div class="stat-label">Selected</div></div>
+    </div>
+    <button class="btn btn-primary" id="scan-btn" onclick="startScan()">🔍 Scan Plex</button>
+  </div>
+
+  <div id="shows-section">
+    <div id="empty-state">
+      <div class="big-icon">📡</div>
+      <h2>Ready to Scan</h2>
+      <p>Click Scan Plex to discover your library.</p>
+    </div>
+    <div id="results-area" style="display:none">
+      <div class="filter-bar">
+        <input type="text" id="search-input" placeholder="Search shows..." oninput="filterShows()">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setFilter('all',this)">All</button>
+          <button class="filter-tab" onclick="setFilter('new',this)">New</button>
+          <button class="filter-tab" onclick="setFilter('sonarr',this)">In Sonarr</button>
+          <button class="filter-tab" onclick="setFilter('selected',this)">Selected</button>
+        </div>
+        <div class="bulk-actions">
+          <button class="btn btn-secondary btn-sm" onclick="selectAll()">Select All New</button>
+          <button class="btn btn-secondary btn-sm" onclick="deselectAll()">Deselect All</button>
+        </div>
+      </div>
+      <div class="shows-grid" id="shows-grid"></div>
+    </div>
+  </div>
+
+  <div id="console-section">
+    <div class="console-header">
+      <div class="console-dots">
+        <div class="console-dot red"></div>
+        <div class="console-dot yellow"></div>
+        <div class="console-dot green"></div>
+      </div>
+      <div class="console-title">watchdog.log — live output</div>
+      <button class="console-clear" onclick="clearConsole()">clear</button>
+    </div>
+    <div id="console-output">
+      <div class="log-line">
+        <span class="log-time">--:--:--</span>
+        <span class="log-level INFO">INFO</span>
+        <span class="log-msg">Watchdog ready. Click Scan Plex to begin.</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="approve-bar">
+    <div class="approve-info"><strong id="approve-count">0</strong> shows selected to import into Sonarr</div>
+    <button class="btn btn-secondary" onclick="deselectAll()">Clear Selection</button>
+    <button class="btn btn-success" id="approve-btn" onclick="approveAndStart()">✓ Approve &amp; Start Watchdog</button>
+  </div>
+
+</div><!-- /main-app -->
+
+<script>
+  let allShows = [], qualityProfiles = [], currentFilter = 'all', scanPolling = null;
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  (async () => {
+    const r = await fetch('/api/watchdog/status');
+    const d = await r.json();
+    if (!d.setupComplete) {
+      document.getElementById('setup-overlay').classList.add('show');
+    } else {
+      showMainApp();
+      populateConfigPanel();
+    }
+  })();
+
+  function showMainApp() {
+    document.getElementById('setup-overlay').classList.remove('show');
+    document.getElementById('main-app').style.display = 'block';
+    startLogStream();
+  }
+
+  // ── SSE Logs ──────────────────────────────────────────────────────────────
+  let logStreamStarted = false;
+  function startLogStream() {
+    if (logStreamStarted) return;
+    logStreamStarted = true;
+    const es = new EventSource('/api/logs/stream');
+    es.onmessage = e => {
+      const d = JSON.parse(e.data);
+      if (d.ping) return;
+      appendLog(d.time, d.level, d.msg);
+    };
+  }
+
+  const consoleEl = () => document.getElementById('console-output');
+  function appendLog(time, level, msg) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-time">${time}</span><span class="log-level ${level}">${level}</span><span class="log-msg">${esc(msg)}</span>`;
+    consoleEl().appendChild(line);
+    consoleEl().scrollTop = consoleEl().scrollHeight;
+  }
+  function clearConsole() { consoleEl().innerHTML = ''; }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── Setup Wizard ──────────────────────────────────────────────────────────
+  let currentPage = 1;
+  function goToPage(n) {
+    document.getElementById(`page-${currentPage}`).classList.remove('active');
+    document.getElementById(`tab-${currentPage}`).classList.remove('active');
+    if (n > currentPage) document.getElementById(`tab-${currentPage}`).classList.add('done');
+    currentPage = n;
+    document.getElementById(`page-${n}`).classList.add('active');
+    document.getElementById(`tab-${n}`).classList.add('active');
+  }
+
+  function getSetupData() {
+    return {
+      PLEX_URL:               document.getElementById('s-plex-url').value.trim(),
+      PLEX_TOKEN:             document.getElementById('s-plex-token').value.trim(),
+      PLEX_TV_LIBRARY:        document.getElementById('s-plex-library').value.trim(),
+      SONARR_URL:             document.getElementById('s-sonarr-url').value.trim(),
+      SONARR_API_KEY:         document.getElementById('s-sonarr-key').value.trim(),
+      SONARR_ROOT_FOLDER:     document.getElementById('s-root-folder').value.trim(),
+      SONARR_QUALITY_PROFILE: document.getElementById('s-quality').value.trim(),
+      TMDB_API_KEY:           document.getElementById('s-tmdb').value.trim(),
+      POLL_INTERVAL:          parseInt(document.getElementById('s-interval').value) || 30,
+    };
+  }
+
+  async function testPlex() {
+    const data = getSetupData();
+    showTestResult('plex', null, 'Testing...');
+    const r = await fetch('/api/test-connections', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    if (d.plex) showTestResult('plex', true, '✅ Connected to Plex successfully!');
+    else showTestResult('plex', false, `❌ ${d.errors.plex || 'Connection failed'}`);
+  }
+
+  async function testSonarr() {
+    const data = getSetupData();
+    showTestResult('sonarr', null, 'Testing...');
+    const r = await fetch('/api/test-connections', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    if (d.sonarr) showTestResult('sonarr', true, '✅ Connected to Sonarr successfully!');
+    else showTestResult('sonarr', false, `❌ ${d.errors.sonarr || 'Connection failed'}`);
+  }
+
+  async function testTmdb() {
+    const data = getSetupData();
+    if (!data.TMDB_API_KEY) { showTestResult('tmdb', false, '❌ No API key entered'); return; }
+    showTestResult('tmdb', null, 'Testing...');
+    const r = await fetch('/api/test-connections', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    const d = await r.json();
+    if (d.tmdb) showTestResult('tmdb', true, '✅ TMDB key is valid!');
+    else showTestResult('tmdb', false, `❌ ${d.errors.tmdb || 'Invalid key'}`);
+  }
+
+  function showTestResult(svc, ok, msg) {
+    const el = document.getElementById(`${svc}-test-result`);
+    el.className = 'test-result show ' + (ok === null ? '' : ok ? 'success' : 'fail');
+    el.textContent = msg;
+  }
+
+  async function saveSetup() {
+    const data = getSetupData();
+    await fetch('/api/setup', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    goToPage(4);
+  }
+
+  function launchApp() {
+    showMainApp();
+    populateConfigPanel();
+  }
+
+  // ── Config Panel ──────────────────────────────────────────────────────────
+  async function populateConfigPanel() {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    document.getElementById('cfg-plex-url').value     = cfg.PLEX_URL || '';
+    document.getElementById('cfg-plex-token').value   = cfg.PLEX_TOKEN || '';
+    document.getElementById('cfg-plex-library').value = cfg.PLEX_TV_LIBRARY || '';
+    document.getElementById('cfg-sonarr-url').value   = cfg.SONARR_URL || '';
+    document.getElementById('cfg-sonarr-key').value   = cfg.SONARR_API_KEY || '';
+    document.getElementById('cfg-root-folder').value  = cfg.SONARR_ROOT_FOLDER || '';
+    document.getElementById('cfg-quality').value      = cfg.SONARR_QUALITY_PROFILE || '';
+    document.getElementById('cfg-tmdb').value         = cfg.TMDB_API_KEY || '';
+    document.getElementById('cfg-interval').value     = cfg.POLL_INTERVAL || 30;
+  }
+
+  function toggleConfig() {
+    const p = document.getElementById('config-panel');
+    p.style.display = p.style.display === 'block' ? 'none' : 'block';
+  }
+
+  async function saveConfig() {
+    const cfg = {
+      PLEX_URL:               document.getElementById('cfg-plex-url').value,
+      PLEX_TOKEN:             document.getElementById('cfg-plex-token').value,
+      PLEX_TV_LIBRARY:        document.getElementById('cfg-plex-library').value,
+      SONARR_URL:             document.getElementById('cfg-sonarr-url').value,
+      SONARR_API_KEY:         document.getElementById('cfg-sonarr-key').value,
+      SONARR_ROOT_FOLDER:     document.getElementById('cfg-root-folder').value,
+      SONARR_QUALITY_PROFILE: document.getElementById('cfg-quality').value,
+      TMDB_API_KEY:           document.getElementById('cfg-tmdb').value,
+      POLL_INTERVAL:          parseInt(document.getElementById('cfg-interval').value),
+    };
+    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+    toggleConfig();
+  }
+
+  // ── Scan ──────────────────────────────────────────────────────────────────
+  async function startScan() {
+    document.getElementById('scan-btn').disabled = true;
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('results-area').style.display = 'none';
+    document.getElementById('approve-bar').style.display = 'none';
+    showLoading('SCANNING PLEX LIBRARY', 'Fetching shows and enriching with TMDB...');
+    setStatusPill('scanning', '🔍 SCANNING');
+    await fetch('/api/scan', { method:'POST' });
+    try {
+      const r = await fetch('/api/quality-profiles');
+      qualityProfiles = await r.json();
+    } catch(e) { qualityProfiles = []; }
+    scanPolling = setInterval(async () => {
+      const r  = await fetch('/api/scan/status');
+      const d  = await r.json();
+      document.getElementById('loading-sub').textContent = `Found ${d.count} shows so far...`;
+      if (d.complete) {
+        clearInterval(scanPolling);
+        allShows = d.results;
+        hideLoading();
+        renderShows();
+        updateStats();
+        document.getElementById('scan-btn').disabled = false;
+        document.getElementById('results-area').style.display = 'block';
+        document.getElementById('approve-bar').style.display = 'flex';
+        setStatusPill('idle', 'SCAN COMPLETE');
+      }
+    }, 1500);
+  }
+
+  function renderShows() {
+    const grid = document.getElementById('shows-grid');
+    grid.innerHTML = '';
+    const filtered = getFiltered();
+    if (!filtered.length) {
+      grid.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;grid-column:1/-1;padding:40px 0;text-align:center;">No shows match filter.</div>';
+    } else {
+      filtered.forEach(s => grid.appendChild(makeCard(s)));
+    }
+    updateApproveBar();
+  }
+
+  function makeCard(show) {
+    const card = document.createElement('div');
+    card.className = `show-card ${show.include ? 'selected' : ''} ${show.inSonarr ? 'in-sonarr' : ''} ${!show.include && !show.inSonarr ? 'excluded' : ''}`;
+    card.dataset.id = show.id;
+    const poster = show.poster
+      ? `<img src="${show.poster}" alt="${esc(show.title)}" loading="lazy">`
+      : `<div class="card-poster-placeholder">📺</div>`;
+    const checkmark = show.inSonarr ? '✓' : (show.include ? '✓' : '');
+    const badge = show.inSonarr ? '<div class="sonarr-badge">IN SONARR</div>' : '';
+    const profileOpts = qualityProfiles.map(p =>
+      `<option value="${p.id}" ${p.id === show.qualityProfileId ? 'selected':''}>${p.name}</option>`).join('');
+    const qualityHtml = !show.inSonarr && qualityProfiles.length
+      ? `<div class="card-quality"><select onchange="setQuality(${show.id},this.value)" onclick="event.stopPropagation()">${profileOpts}</select></div>` : '';
+    card.innerHTML = `
+      <div class="card-poster">${poster}<div class="card-check">${checkmark}</div>${badge}</div>
+      <div class="card-info">
+        <div class="card-title" title="${esc(show.title)}">${esc(show.title)}</div>
+        <div class="card-meta">
+          <span>${show.seasons}S</span><span>${show.episodes}ep</span>
+          ${show.rating ? `<span class="card-rating">★${show.rating}</span>` : ''}
+          ${show.firstAir ? `<span>${show.firstAir.slice(0,4)}</span>` : ''}
+        </div>
+        ${qualityHtml}
+      </div>`;
+    if (!show.inSonarr) card.addEventListener('click', () => toggleShow(show.id));
+    return card;
+  }
+
+  function toggleShow(id) {
+    const s = allShows.find(x => x.id === id);
+    if (!s || s.inSonarr) return;
+    s.include = !s.include;
+    updateStats(); updateApproveBar();
+    const el = document.querySelector(`.show-card[data-id="${id}"]`);
+    if (el) el.replaceWith(makeCard(s));
+  }
+  function setQuality(id, profileId) {
+    const s = allShows.find(x => x.id === id);
+    if (s) s.qualityProfileId = parseInt(profileId);
+  }
+  function selectAll()  { allShows.forEach(s => { if (!s.inSonarr) s.include = true; }); renderShows(); updateStats(); updateApproveBar(); }
+  function deselectAll(){ allShows.forEach(s => { if (!s.inSonarr) s.include = false; }); renderShows(); updateStats(); updateApproveBar(); }
+  function getFiltered() {
+    const q = (document.getElementById('search-input').value || '').toLowerCase();
+    return allShows.filter(s => {
+      if (q && !s.title.toLowerCase().includes(q)) return false;
+      if (currentFilter === 'new')      return !s.inSonarr;
+      if (currentFilter === 'sonarr')   return s.inSonarr;
+      if (currentFilter === 'selected') return s.include && !s.inSonarr;
+      return true;
+    });
+  }
+  function filterShows() { renderShows(); }
+  function setFilter(f, el) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderShows();
+  }
+  function updateStats() {
+    document.getElementById('stat-total').textContent    = allShows.length;
+    document.getElementById('stat-sonarr').textContent   = allShows.filter(s => s.inSonarr).length;
+    document.getElementById('stat-new').textContent      = allShows.filter(s => !s.inSonarr).length;
+    document.getElementById('stat-selected').textContent = allShows.filter(s => s.include && !s.inSonarr).length;
+  }
+  function updateApproveBar() {
+    document.getElementById('approve-count').textContent = allShows.filter(s => s.include && !s.inSonarr).length;
+  }
+
+  // ── Approve ───────────────────────────────────────────────────────────────
+  async function approveAndStart() {
+    const btn = document.getElementById('approve-btn');
+    btn.disabled = true; btn.textContent = '⏳ Importing...';
+    showLoading('IMPORTING TO SONARR', 'Adding selected shows...');
+    setStatusPill('running', '🐕 RUNNING');
+    await fetch('/api/approve', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ results: allShows })
+    });
+    hideLoading();
+    switchToWatchdogMode();
+  }
+
+  function switchToWatchdogMode() {
+    document.getElementById('scan-bar').style.display     = 'none';
+    document.getElementById('shows-section').style.display = 'none';
+    document.getElementById('approve-bar').style.display   = 'none';
+    document.getElementById('config-panel').style.display  = 'none';
+    document.getElementById('stop-btn').style.display      = 'block';
+
+    // Expand console to fill remaining screen
+    const cs = document.getElementById('console-section');
+    cs.style.margin = '0';
+    cs.style.borderRadius = '0';
+    cs.style.border = 'none';
+    cs.style.borderTop = '1px solid var(--border2)';
+    cs.style.flex = '1';
+
+    const co = document.getElementById('console-output');
+    co.style.height = 'calc(100vh - 63px)';
+
+    setStatusPill('running', '🐕 WATCHDOG RUNNING');
+  }
+
+  async function stopWatchdog() {
+    await fetch('/api/watchdog/stop', { method:'POST' });
+    setStatusPill('idle', '■ STOPPED');
+    document.getElementById('stop-btn').style.display = 'none';
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatusPill(state, label) {
+    const pill = document.getElementById('watchdog-status-pill');
+    pill.className = 'status-pill ' + state;
+    pill.innerHTML = `<div class="dot ${state !== 'idle' ? 'pulse' : ''}"></div> ${label}`;
+  }
+  function showLoading(title, sub) {
+    document.getElementById('loading-text').textContent = title;
+    document.getElementById('loading-sub').textContent  = sub;
+    document.getElementById('loading-overlay').classList.add('show');
+  }
+  function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+</script>
+</body>
+</html>
