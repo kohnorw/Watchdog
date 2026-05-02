@@ -101,10 +101,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 .ctitle{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);flex:1;text-align:center;letter-spacing:1px}
 .cclear{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 8px}
 .cclear:hover{color:var(--accent)}
-#console-out{flex:1;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;display:flex;flex-direction:column-reverse}
+#console-out{flex:1;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8}
 #console-out::-webkit-scrollbar{width:4px}
 #console-out::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.log-inner{display:flex;flex-direction:column}
+
 .ll{display:flex;gap:10px}
 .lt{color:var(--muted);flex-shrink:0}
 .lv{flex-shrink:0;width:52px;text-align:right}
@@ -339,21 +339,14 @@ function startLogStream(){
   const es=new EventSource('/api/logs/stream');
   es.onmessage=e=>{const d=JSON.parse(e.data);if(!d.ping)addLog(d.time,d.level,d.msg)};
 }
-function getLogInner(){
-  const out=document.getElementById('console-out');
-  let inner=out.querySelector('.log-inner');
-  if(!inner){inner=document.createElement('div');inner.className='log-inner';out.appendChild(inner);}
-  return inner;
-}
 function addLog(t,l,m){
-  const inner=getLogInner();
+  const out=document.getElementById('console-out');
   const line=document.createElement('div');
   line.className='ll';
   line.innerHTML=`<span class="lt">${t}</span><span class="lv ${l}">${l}</span><span class="lm">${esc(m)}</span>`;
-  inner.appendChild(line);
-  // column-reverse keeps latest at bottom automatically — no scrollTop needed
+  out.insertBefore(line, out.firstChild);
 }
-function clearLog(){const out=document.getElementById('console-out');out.innerHTML=''}
+function clearLog(){document.getElementById('console-out').innerHTML=''}
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 // ── Setup wizard ──────────────────────────────────────────────────────────────
