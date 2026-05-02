@@ -2,808 +2,520 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Watchdog — Plex → Sonarr</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Watchdog</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:      #0a0b0d;
-    --surface: #111318;
-    --border:  #1e2129;
-    --border2: #2a2f3a;
-    --accent:  #e8ff47;
-    --accent2: #47b8ff;
-    --danger:  #ff4757;
-    --success: #2ed573;
-    --muted:   #4a5165;
-    --text:    #c8cdd8;
-    --texthi:  #f0f2f7;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+:root{--bg:#0a0b0d;--surface:#111318;--border:#1e2129;--border2:#2a2f3a;--accent:#e8ff47;--accent2:#47b8ff;--danger:#ff4757;--success:#2ed573;--muted:#4a5165;--text:#c8cdd8;--hi:#f0f2f7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;display:flex;flex-direction:column}
 
-  /* ══ SETUP WIZARD ══════════════════════════════════════════════════════════ */
-  #setup-overlay { display:none; position:fixed; inset:0; background:var(--bg); z-index:500; overflow-y:auto; padding:40px 20px; }
-  #setup-overlay.show { display:flex; align-items:flex-start; justify-content:center; }
-  .setup-card { width:100%; max-width:640px; margin:auto; }
-  .setup-logo { text-align:center; margin-bottom:40px; }
-  .setup-logo .icon { font-size:56px; display:block; margin-bottom:12px; }
-  .setup-logo h1 { font-size:36px; font-weight:800; color:var(--texthi); letter-spacing:-1px; }
-  .setup-logo p  { color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:12px; margin-top:6px; letter-spacing:1px; }
-  .setup-steps { display:flex; margin-bottom:32px; border-bottom:1px solid var(--border); }
-  .setup-step-tab { flex:1; padding:12px; text-align:center; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); border-bottom:2px solid transparent; transition:all 0.2s; letter-spacing:1px; }
-  .setup-step-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
-  .setup-step-tab.done   { color:var(--success); }
-  .setup-page { display:none; }
-  .setup-page.active { display:block; }
-  .setup-section-title { font-size:18px; font-weight:800; color:var(--texthi); margin-bottom:6px; }
-  .setup-section-sub { font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.5; }
-  .setup-section-sub a { color:var(--accent2); text-decoration:none; }
-  .setup-section-sub a:hover { text-decoration:underline; }
-  .field-group { margin-bottom:16px; }
-  .field-group label { display:block; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px; }
-  .field-group input, .field-group select { width:100%; background:var(--surface); border:1px solid var(--border2); border-radius:8px; color:var(--texthi); font-family:'JetBrains Mono',monospace; font-size:13px; padding:11px 14px; outline:none; transition:border-color 0.15s; }
-  .field-group input:focus { border-color:var(--accent); }
-  .field-hint { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); margin-top:5px; }
-  .field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .test-btn { font-family:'Syne',sans-serif; font-weight:700; font-size:12px; padding:10px 18px; border-radius:8px; border:1px solid var(--border2); background:transparent; color:var(--text); cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:8px; margin-top:8px; }
-  .test-btn:hover { border-color:var(--accent2); color:var(--accent2); }
-  .test-result { font-family:'JetBrains Mono',monospace; font-size:11px; margin-top:10px; padding:10px 14px; border-radius:6px; display:none; }
-  .test-result.show { display:block; }
-  .test-result.success { background:rgba(46,213,115,0.1); border:1px solid var(--success); color:var(--success); }
-  .test-result.fail    { background:rgba(255,71,87,0.1);  border:1px solid var(--danger);  color:var(--danger); }
-  .setup-nav { display:flex; justify-content:space-between; margin-top:32px; padding-top:24px; border-top:1px solid var(--border); gap:12px; }
+/* ── SETUP ── */
+#setup-overlay{display:none;position:fixed;inset:0;background:var(--bg);z-index:500;overflow-y:auto;padding:40px 20px;align-items:flex-start;justify-content:center}
+#setup-overlay.show{display:flex}
+.setup-card{width:100%;max-width:640px;margin:auto}
+.setup-logo{text-align:center;margin-bottom:40px}
+.setup-logo .icon{font-size:56px;display:block;margin-bottom:12px}
+.setup-logo h1{font-size:36px;font-weight:800;color:var(--hi);letter-spacing:-1px}
+.setup-logo p{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px;margin-top:6px;letter-spacing:1px}
+.setup-steps{display:flex;margin-bottom:32px;border-bottom:1px solid var(--border)}
+.sst{flex:1;padding:12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);border-bottom:2px solid transparent;transition:all .2s;letter-spacing:1px}
+.sst.active{color:var(--accent);border-bottom-color:var(--accent)}
+.sst.done{color:var(--success)}
+.spage{display:none}.spage.active{display:block}
+.stitle{font-size:18px;font-weight:800;color:var(--hi);margin-bottom:6px}
+.ssub{font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.5}
+.ssub a{color:var(--accent2);text-decoration:none}
+.fg{margin-bottom:16px}
+.fg label{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+.fg input{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--hi);font-family:'JetBrains Mono',monospace;font-size:13px;padding:11px 14px;outline:none;transition:border-color .15s}
+.fg input:focus{border-color:var(--accent)}
+.fhint{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:5px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.test-btn{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:10px 18px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;transition:all .15s;margin-top:8px}
+.test-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+.test-result{font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:10px;padding:10px 14px;border-radius:6px;display:none}
+.test-result.show{display:block}
+.test-result.ok{background:rgba(46,213,115,.1);border:1px solid var(--success);color:var(--success)}
+.test-result.fail{background:rgba(255,71,87,.1);border:1px solid var(--danger);color:var(--danger)}
+.snav{display:flex;justify-content:space-between;margin-top:32px;padding-top:24px;border-top:1px solid var(--border);gap:12px}
 
-  /* ══ BUTTONS ══════════════════════════════════════════════════════════════ */
-  .btn { font-family:'Syne',sans-serif; font-weight:700; font-size:13px; padding:10px 22px; border-radius:8px; border:none; cursor:pointer; transition:all 0.15s; }
-  .btn-primary  { background:var(--accent); color:#000; }
-  .btn-primary:hover { background:#f0ff60; transform:translateY(-1px); }
-  .btn-secondary { background:transparent; color:var(--text); border:1px solid var(--border2); }
-  .btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
-  .btn-success  { background:var(--success); color:#000; }
-  .btn-success:hover { background:#3dff87; }
-  .btn-sm { font-size:11px; padding:6px 14px; }
-  .btn:disabled { opacity:0.4; cursor:not-allowed; transform:none !important; }
+/* ── BUTTONS ── */
+.btn{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:10px 22px;border-radius:8px;border:none;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--accent);color:#000}.btn-primary:hover{background:#f0ff60;transform:translateY(-1px)}
+.btn-secondary{background:transparent;color:var(--text);border:1px solid var(--border2)}.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-success{background:var(--success);color:#000}.btn-success:hover{background:#3dff87}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-sm{font-size:11px;padding:6px 14px}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
 
-  /* ══ MAIN APP ══════════════════════════════════════════════════════════════ */
-  #main-app { display:none; flex-direction:column; flex:1; }
+/* ── LOADING ── */
+#loading{display:none;position:fixed;inset:0;background:rgba(10,11,13,.88);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:16px;backdrop-filter:blur(6px)}
+#loading.show{display:flex}
+.spinner{width:48px;height:48px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-title{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent);letter-spacing:1px}
+.loading-sub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
 
-  header { display:flex; align-items:center; justify-content:space-between; padding:18px 32px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(10,11,13,0.95); backdrop-filter:blur(12px); z-index:100; }
-  .logo { display:flex; align-items:center; gap:12px; }
-  .logo-icon { width:38px; height:38px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
-  .logo-text { font-size:22px; font-weight:800; color:var(--texthi); letter-spacing:-0.5px; }
-  .logo-sub  { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:2px; }
-  .header-right { display:flex; align-items:center; gap:12px; }
-  .status-pill { font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 12px; border-radius:20px; border:1px solid var(--border2); color:var(--muted); display:flex; align-items:center; gap:6px; }
-  .status-pill.running  { border-color:var(--success); color:var(--success); }
-  .status-pill.scanning { border-color:var(--accent);  color:var(--accent); }
-  .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .dot.pulse { animation:pulse 1.2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+/* ── APP SHELL ── */
+#app{display:none;flex-direction:column;flex:1}
 
-  /* config panel */
-  #config-panel { padding:24px 32px; border-bottom:1px solid var(--border); background:var(--surface); display:none; }
-  .config-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-top:16px; }
-  .config-field label { display:block; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:5px; }
-  .config-field input { width:100%; background:var(--bg); border:1px solid var(--border2); border-radius:6px; color:var(--texthi); font-family:'JetBrains Mono',monospace; font-size:12px; padding:8px 12px; outline:none; transition:border-color 0.15s; }
-  .config-field input:focus { border-color:var(--accent); }
-  .section-title { font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--muted); text-transform:uppercase; letter-spacing:2px; display:flex; align-items:center; gap:8px; }
-  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(10,11,13,.96);backdrop-filter:blur(12px);z-index:100;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:34px;height:34px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.logo-text{font-size:20px;font-weight:800;color:var(--hi);letter-spacing:-.5px}
+.logo-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px}
+.header-mid{display:flex;gap:2px}
+.nav-tab{font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 16px;border-radius:6px;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.5px}
+.nav-tab:hover{color:var(--text)}
+.nav-tab.active{background:rgba(232,255,71,.08);color:var(--accent)}
+.header-right{display:flex;align-items:center;gap:10px}
+.status-pill{font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);color:var(--muted);display:flex;align-items:center;gap:6px}
+.status-pill.running{border-color:var(--success);color:var(--success)}
+.status-pill.scanning{border-color:var(--accent);color:var(--accent)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dot.pulse{animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
 
-  /* scan bar */
-  #scan-bar { padding:20px 32px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
-  .scan-stats { display:flex; gap:24px; flex:1; }
-  .stat { display:flex; flex-direction:column; gap:2px; }
-  .stat-val { font-size:24px; font-weight:800; color:var(--texthi); line-height:1; }
-  .stat-val.accent { color:var(--accent); }
-  .stat-val.blue   { color:var(--accent2); }
-  .stat-val.green  { color:var(--success); }
-  .stat-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+/* ── PAGES ── */
+.page{display:none;flex:1;flex-direction:column;min-height:0}
+.page.active{display:flex}
 
-  /* shows section */
-  #shows-section { padding:24px 32px; flex:1; }
-  .filter-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
-  .filter-bar input { background:var(--surface); border:1px solid var(--border2); border-radius:6px; color:var(--texthi); font-family:'JetBrains Mono',monospace; font-size:12px; padding:8px 14px; outline:none; flex:1; min-width:200px; transition:border-color 0.15s; }
-  .filter-bar input:focus { border-color:var(--accent); }
-  .filter-tabs { display:flex; gap:4px; }
-  .filter-tab { font-family:'JetBrains Mono',monospace; font-size:11px; padding:7px 14px; border-radius:6px; border:1px solid var(--border2); background:transparent; color:var(--muted); cursor:pointer; transition:all 0.15s; }
-  .filter-tab.active { border-color:var(--accent); color:var(--accent); background:rgba(232,255,71,0.07); }
-  .bulk-actions { display:flex; gap:8px; margin-left:auto; }
-  .shows-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; }
-  .show-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:all 0.2s; cursor:pointer; position:relative; }
-  .show-card:hover { border-color:var(--border2); transform:translateY(-2px); }
-  .show-card.selected  { border-color:var(--accent); }
-  .show-card.excluded  { opacity:0.4; }
-  .show-card.in-sonarr { border-color:var(--border); cursor:default; }
-  .card-poster { width:100%; aspect-ratio:2/3; background:var(--border); position:relative; overflow:hidden; }
-  .card-poster img { width:100%; height:100%; object-fit:cover; display:block; }
-  .card-poster-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:36px; background:linear-gradient(135deg,#1a1d25 0%,#0f1117 100%); color:var(--muted); }
-  .card-check { position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%; border:2px solid rgba(255,255,255,0.3); background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; font-size:13px; backdrop-filter:blur(4px); transition:all 0.15s; }
-  .show-card.selected  .card-check { background:var(--accent); border-color:var(--accent); color:#000; }
-  .show-card.in-sonarr .card-check { background:var(--success); border-color:var(--success); color:#000; }
-  .sonarr-badge { position:absolute; bottom:8px; left:8px; font-family:'JetBrains Mono',monospace; font-size:9px; padding:2px 7px; background:rgba(46,213,115,0.2); border:1px solid var(--success); color:var(--success); border-radius:4px; letter-spacing:1px; }
-  .status-badge { position:absolute; bottom:8px; left:8px; font-family:'JetBrains Mono',monospace; font-size:9px; padding:2px 7px; border-radius:4px; letter-spacing:1px; }
-  .status-badge.ongoing { background:rgba(71,184,255,0.15); border:1px solid var(--accent2); color:var(--accent2); }
-  .status-badge.ended   { background:rgba(74,81,101,0.3); border:1px solid var(--muted); color:var(--muted); }
-  .card-info { padding:10px 12px 12px; }
-  .card-title { font-weight:700; font-size:13px; color:var(--texthi); line-height:1.3; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .card-meta  { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); display:flex; gap:8px; }
-  .card-rating { color:var(--accent); }
-  .card-quality { margin-top:8px; }
-  .card-quality select { width:100%; background:var(--bg); border:1px solid var(--border2); border-radius:4px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:10px; padding:4px 8px; outline:none; }
+/* ── PAGE 1: DASHBOARD ── */
+#page-dashboard{overflow:hidden}
 
-  /* ══ WATCHDOG VIEW — two column ══════════════════════════════════════════ */
-  #watchdog-view { display:none; flex:1; overflow:hidden; }
+/* scanning progress bar shown before watchdog starts */
+#scan-progress{padding:20px 28px;border-bottom:1px solid var(--border);background:var(--surface);display:none}
+.scan-status-row{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.scan-status-text{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);flex:1}
+.progress-track{height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s;width:0%}
 
-  .wd-layout { display:flex; height:calc(100vh - 63px); }
+/* console */
+.console-wrap{display:flex;flex-direction:column;flex:1;min-height:0}
+.console-bar{display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.cdots{display:flex;gap:5px}
+.cdot{width:10px;height:10px;border-radius:50%}
+.cdot.r{background:#ff5f57}.cdot.y{background:#febc2e}.cdot.g{background:#28c840}
+.ctitle{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);flex:1;text-align:center;letter-spacing:1px}
+.cclear{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 8px}
+.cclear:hover{color:var(--accent)}
+#console-out{flex:1;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;min-height:0}
+#console-out::-webkit-scrollbar{width:4px}
+#console-out::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.ll{display:flex;gap:10px}
+.lt{color:var(--muted);flex-shrink:0}
+.lv{flex-shrink:0;width:52px;text-align:right}
+.lv.INFO{color:var(--accent2)}.lv.WARNING{color:#ffa502}.lv.ERROR{color:var(--danger)}.lv.DEBUG{color:var(--muted)}
+.lm{color:var(--text);word-break:break-all}
 
-  /* left sidebar nav */
-  .wd-sidebar {
-    width: 180px;
-    flex-shrink: 0;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    padding: 16px 0;
-    gap: 4px;
-  }
-  .wd-tab {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 20px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-    cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: all 0.15s;
-    background: none;
-    border-top: none;
-    border-right: none;
-    border-bottom: none;
-    width: 100%;
-    text-align: left;
-  }
-  .wd-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
-  .wd-tab.active { color: var(--accent); border-left-color: var(--accent); background: rgba(232,255,71,0.05); }
-  .wd-tab-icon { font-size: 15px; flex-shrink: 0; }
+/* ── PAGE 2: SERIES ── */
+#page-series{overflow:hidden}
+.series-toolbar{display:flex;align-items:center;gap:10px;padding:16px 28px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.series-search{background:var(--surface);border:1px solid var(--border2);border-radius:6px;color:var(--hi);font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 14px;outline:none;flex:1;min-width:180px;transition:border-color .15s}
+.series-search:focus{border-color:var(--accent)}
+.sf-tabs{display:flex;gap:4px}
+.sf-tab{font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.sf-tab.active{border-color:var(--accent);color:var(--accent);background:rgba(232,255,71,.07)}
 
-  /* right content */
-  .wd-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .wd-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
-  .wd-pane.active { display: flex; }
+.series-list-wrap{flex:1;overflow-y:auto;padding:20px 28px}
+#series-list{display:flex;flex-direction:column;gap:8px}
+.sr{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:border-color .15s;cursor:pointer}
+.sr:hover{border-color:var(--border2)}
+.sr-poster{width:40px;height:58px;border-radius:5px;object-fit:cover;background:var(--border);flex-shrink:0}
+.sr-poster-ph{width:40px;height:58px;border-radius:5px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.sr-info{flex:1;min-width:0}
+.sr-title{font-weight:700;font-size:14px;color:var(--hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
+.sr-bar-wrap{display:flex;align-items:center;gap:8px}
+.sr-bar{flex:1;height:3px;border-radius:2px;background:var(--border2);overflow:hidden}
+.sr-bar-fill{height:100%;background:var(--success);border-radius:2px;transition:width .4s}
+.sr-eps{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;min-width:60px;text-align:right}
+.sr-pill{font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 8px;border-radius:4px;letter-spacing:1px;flex-shrink:0}
+.sr-pill.ongoing{background:rgba(71,184,255,.12);border:1px solid var(--accent2);color:var(--accent2)}
+.sr-pill.ended{background:rgba(74,81,101,.2);border:1px solid var(--muted);color:var(--muted)}
+.link-btn{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;padding:7px 16px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;transition:all .15s;flex-shrink:0;white-space:nowrap}
+.link-btn:hover:not(:disabled){background:var(--accent);color:#000}
+.link-btn:disabled{opacity:.4;cursor:not-allowed}
+.link-btn.done{border-color:var(--success);color:var(--success)}
+.link-btn.done:hover:not(:disabled){background:var(--success);color:#000}
 
-  /* console pane */
-  #pane-console { background: #080a0c; }
-  .console-header { padding:12px 18px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
-  .console-dots { display:flex; gap:6px; }
-  .console-dot { width:10px; height:10px; border-radius:50%; }
-  .console-dot.red    { background:#ff5f57; }
-  .console-dot.yellow { background:#febc2e; }
-  .console-dot.green  { background:#28c840; }
-  .console-title { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); flex:1; text-align:center; letter-spacing:1px; }
-  .console-clear { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); background:none; border:none; cursor:pointer; padding:2px 8px; }
-  .console-clear:hover { color:var(--accent); }
-  #console-output { flex:1; overflow-y:auto; padding:14px 18px; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.7; }
-  #console-output::-webkit-scrollbar { width:4px; }
-  #console-output::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
-  .log-line { display:flex; gap:10px; }
-  .log-time  { color:var(--muted); flex-shrink:0; }
-  .log-level { flex-shrink:0; width:52px; text-align:right; }
-  .log-level.INFO    { color:var(--accent2); }
-  .log-level.WARNING { color:#ffa502; }
-  .log-level.ERROR   { color:var(--danger); }
-  .log-level.DEBUG   { color:var(--muted); }
-  .log-msg { color:var(--text); word-break:break-all; }
-
-  /* connect files pane */
-  #pane-connect { overflow-y: auto; padding: 24px 28px; }
-  .connect-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
-  .connect-search { background:var(--surface); border:1px solid var(--border2); border-radius:6px; color:var(--texthi); font-family:'JetBrains Mono',monospace; font-size:12px; padding:8px 14px; outline:none; flex:1; transition:border-color 0.15s; }
-  .connect-search:focus { border-color:var(--accent); }
-  .connect-filters { display:flex; gap:4px; }
-  .connect-filter { font-family:'JetBrains Mono',monospace; font-size:10px; padding:6px 12px; border-radius:6px; border:1px solid var(--border2); background:transparent; color:var(--muted); cursor:pointer; transition:all 0.15s; }
-  .connect-filter.active { border-color:var(--accent); color:var(--accent); background:rgba(232,255,71,0.07); }
-
-  .series-row { display:flex; align-items:center; gap:14px; padding:12px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface); margin-bottom:8px; transition:border-color 0.15s; }
-  .series-row:hover { border-color:var(--border2); }
-  .series-info { flex:1; min-width:0; }
-  .series-title { font-weight:700; font-size:13px; color:var(--texthi); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px; }
-  .file-bar { height:3px; border-radius:2px; background:var(--border2); overflow:hidden; }
-  .file-bar-fill { height:100%; background:var(--success); border-radius:2px; transition:width 0.4s; }
-  .series-meta { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); flex-shrink:0; min-width:80px; text-align:right; }
-  .series-status-pill { font-family:'JetBrains Mono',monospace; font-size:9px; padding:2px 8px; border-radius:4px; letter-spacing:1px; flex-shrink:0; }
-  .series-status-pill.ongoing  { background:rgba(71,184,255,0.12); border:1px solid var(--accent2); color:var(--accent2); }
-  .series-status-pill.ended    { background:rgba(74,81,101,0.2);   border:1px solid var(--muted);   color:var(--muted); }
-  .connect-btn { font-family:'Syne',sans-serif; font-weight:700; font-size:11px; padding:6px 16px; border-radius:6px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; transition:all 0.15s; flex-shrink:0; white-space:nowrap; }
-  .connect-btn:hover:not(:disabled) { background:var(--accent); color:#000; }
-  .connect-btn:disabled { opacity:0.4; cursor:not-allowed; }
-  .connect-btn.done { border-color:var(--success); color:var(--success); }
-  .connect-btn.done:hover { background:var(--success); color:#000; }
-
-  /* scan-phase console (before watchdog mode) */
-  #scan-console-section { margin:0 32px 32px; border:1px solid var(--border2); border-radius:10px; overflow:hidden; background:#080a0c; }
-
-  /* approve bar */
-  #approve-bar { position:sticky; bottom:0; background:rgba(10,11,13,0.97); border-top:1px solid var(--border2); padding:16px 32px; display:none; align-items:center; gap:16px; backdrop-filter:blur(12px); z-index:50; }
-  .approve-info { flex:1; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); }
-  .approve-info strong { color:var(--accent); }
-
-  /* loading */
-  #loading-overlay { display:none; position:fixed; inset:0; background:rgba(10,11,13,0.85); z-index:300; align-items:center; justify-content:center; flex-direction:column; gap:16px; backdrop-filter:blur(6px); }
-  #loading-overlay.show { display:flex; }
-  .spinner { width:48px; height:48px; border:3px solid var(--border2); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  .loading-text { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--accent); letter-spacing:1px; }
-  .loading-sub  { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); }
-
-  #empty-state { padding:80px 32px; text-align:center; }
-  #empty-state .big-icon { font-size:64px; margin-bottom:16px; }
-  #empty-state h2 { font-size:22px; font-weight:800; color:var(--texthi); margin-bottom:8px; }
-  #empty-state p  { color:var(--muted); font-size:14px; }
+/* config panel */
+#cfg-panel{padding:20px 28px;border-bottom:1px solid var(--border);background:var(--surface);display:none}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+.cff label{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:5px}
+.cff input{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--hi);font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;outline:none;transition:border-color .15s}
+.cff input:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
 
-<!-- SETUP WIZARD -->
+<!-- SETUP -->
 <div id="setup-overlay">
-  <div class="setup-card">
-    <div class="setup-logo">
-      <span class="icon">🐕</span>
-      <h1>Watchdog</h1>
-      <p>PLEX → SONARR BRIDGE · FIRST TIME SETUP</p>
+<div class="setup-card">
+  <div class="setup-logo"><span class="icon">🐕</span><h1>Watchdog</h1><p>PLEX → SONARR BRIDGE · SETUP</p></div>
+  <div class="setup-steps">
+    <div class="sst active" id="t1">1 · PLEX</div>
+    <div class="sst" id="t2">2 · SONARR</div>
+    <div class="sst" id="t3">3 · TMDB</div>
+    <div class="sst" id="t4">4 · DONE</div>
+  </div>
+  <div class="spage active" id="sp1">
+    <div class="stitle">Plex Connection</div>
+    <div class="ssub">Your Plex server URL and token. Find token at <a href="https://support.plex.tv/articles/204059436" target="_blank">support.plex.tv</a>.</div>
+    <div class="fg"><label>Plex URL</label><input id="s-pu" placeholder="http://192.168.1.x:32400" value="{{ config.PLEX_URL }}"><div class="fhint">Include http:// and port 32400</div></div>
+    <div class="fg"><label>Plex Token</label><input type="password" id="s-pt" value="{{ config.PLEX_TOKEN }}"></div>
+    <div class="fg"><label>TV Library Name</label><input id="s-pl" placeholder="TV Shows" value="{{ config.PLEX_TV_LIBRARY }}"><div class="fhint">Must match exactly as it appears in Plex</div></div>
+    <button class="test-btn" onclick="testConn('plex')">🔌 Test Plex Connection</button>
+    <div class="test-result" id="tr-plex"></div>
+    <div class="snav"><div></div><button class="btn btn-primary" onclick="goPage(2)">Next → Sonarr</button></div>
+  </div>
+  <div class="spage" id="sp2">
+    <div class="stitle">Sonarr Connection</div>
+    <div class="ssub">API key in Sonarr → Settings → General → Security.</div>
+    <div class="fg"><label>Sonarr URL</label><input id="s-su" placeholder="http://192.168.1.x:8989" value="{{ config.SONARR_URL }}"></div>
+    <div class="fg"><label>Sonarr API Key</label><input type="password" id="s-sk" value="{{ config.SONARR_API_KEY }}"></div>
+    <div class="frow">
+      <div class="fg"><label>Root Folder</label><input id="s-rf" placeholder="/tv" value="{{ config.SONARR_ROOT_FOLDER }}"></div>
+      <div class="fg"><label>Quality Profile</label><input id="s-qp" placeholder="HD-1080p" value="{{ config.SONARR_QUALITY_PROFILE }}"></div>
     </div>
-    <div class="setup-steps">
-      <div class="setup-step-tab active" id="tab-1">1 · PLEX</div>
-      <div class="setup-step-tab"        id="tab-2">2 · SONARR</div>
-      <div class="setup-step-tab"        id="tab-3">3 · TMDB</div>
-      <div class="setup-step-tab"        id="tab-4">4 · DONE</div>
-    </div>
-    <div class="setup-page active" id="page-1">
-      <div class="setup-section-title">Plex Connection</div>
-      <div class="setup-section-sub">Enter your Plex server URL and token. Find your token at <a href="https://support.plex.tv/articles/204059436" target="_blank">support.plex.tv</a>.</div>
-      <div class="field-group"><label>Plex Server URL</label><input type="text" id="s-plex-url" placeholder="http://192.168.1.x:32400" value="{{ config.PLEX_URL }}"><div class="field-hint">Include http:// and port 32400</div></div>
-      <div class="field-group"><label>Plex Token</label><input type="password" id="s-plex-token" placeholder="xxxxxxxxxxxxxxxxxxxx" value="{{ config.PLEX_TOKEN }}"></div>
-      <div class="field-group"><label>TV Library Name</label><input type="text" id="s-plex-library" placeholder="TV Shows" value="{{ config.PLEX_TV_LIBRARY }}"><div class="field-hint">Must match exactly as it appears in Plex</div></div>
-      <button class="test-btn" onclick="testPlex()">🔌 Test Plex Connection</button>
-      <div class="test-result" id="plex-test-result"></div>
-      <div class="setup-nav"><div></div><button class="btn btn-primary" onclick="goToPage(2)">Next → Sonarr</button></div>
-    </div>
-    <div class="setup-page" id="page-2">
-      <div class="setup-section-title">Sonarr Connection</div>
-      <div class="setup-section-sub">Find your API key in Sonarr → Settings → General → Security.</div>
-      <div class="field-group"><label>Sonarr URL</label><input type="text" id="s-sonarr-url" placeholder="http://192.168.1.x:8989" value="{{ config.SONARR_URL }}"></div>
-      <div class="field-group"><label>Sonarr API Key</label><input type="password" id="s-sonarr-key" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="{{ config.SONARR_API_KEY }}"></div>
-      <div class="field-row">
-        <div class="field-group"><label>Root Folder Path</label><input type="text" id="s-root-folder" placeholder="/tv" value="{{ config.SONARR_ROOT_FOLDER }}"></div>
-        <div class="field-group"><label>Default Quality Profile</label><input type="text" id="s-quality" placeholder="HD-1080p" value="{{ config.SONARR_QUALITY_PROFILE }}"></div>
-      </div>
-      <div class="field-group"><label>Poll Interval (seconds)</label><input type="number" id="s-interval" placeholder="30" value="{{ config.POLL_INTERVAL }}"><div class="field-hint">How often Watchdog checks Plex for new shows</div></div>
-      <button class="test-btn" onclick="testSonarr()">🔌 Test Sonarr Connection</button>
-      <div class="test-result" id="sonarr-test-result"></div>
-      <div class="setup-nav"><button class="btn btn-secondary" onclick="goToPage(1)">← Back</button><button class="btn btn-primary" onclick="goToPage(3)">Next → TMDB</button></div>
-    </div>
-    <div class="setup-page" id="page-3">
-      <div class="setup-section-title">TMDB (Optional)</div>
-      <div class="setup-section-sub">A free TMDB API key gives Watchdog access to show posters, ratings, and statuses. Get one at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a>.</div>
-      <div class="field-group"><label>TMDB API Key</label><input type="password" id="s-tmdb" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value="{{ config.TMDB_API_KEY }}"></div>
-      <button class="test-btn" onclick="testTmdb()">🔌 Test TMDB Key</button>
-      <div class="test-result" id="tmdb-test-result"></div>
-      <div class="setup-nav"><button class="btn btn-secondary" onclick="goToPage(2)">← Back</button><button class="btn btn-primary" onclick="saveSetup()">Save & Continue →</button></div>
-    </div>
-    <div class="setup-page" id="page-4">
-      <div style="text-align:center;padding:40px 0;">
-        <div style="font-size:64px;margin-bottom:20px;">✅</div>
-        <div class="setup-section-title" style="justify-content:center;font-size:24px;">All Set!</div>
-        <div class="setup-section-sub" style="margin-top:10px;">Config saved. Click below to start scanning your Plex library.</div>
-        <button class="btn btn-success" style="margin-top:24px;padding:14px 36px;font-size:15px;" onclick="launchApp()">🚀 Launch Watchdog</button>
-      </div>
+    <div class="fg"><label>Poll Interval (seconds)</label><input type="number" id="s-pi" value="{{ config.POLL_INTERVAL }}"></div>
+    <button class="test-btn" onclick="testConn('sonarr')">🔌 Test Sonarr Connection</button>
+    <div class="test-result" id="tr-sonarr"></div>
+    <div class="snav"><button class="btn btn-secondary" onclick="goPage(1)">← Back</button><button class="btn btn-primary" onclick="goPage(3)">Next → TMDB</button></div>
+  </div>
+  <div class="spage" id="sp3">
+    <div class="stitle">TMDB (Optional but recommended)</div>
+    <div class="ssub">Used to determine if a show is still ongoing. Free key at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a>.</div>
+    <div class="fg"><label>TMDB API Key</label><input type="password" id="s-tm" value="{{ config.TMDB_API_KEY }}"></div>
+    <button class="test-btn" onclick="testConn('tmdb')">🔌 Test TMDB Key</button>
+    <div class="test-result" id="tr-tmdb"></div>
+    <div class="snav"><button class="btn btn-secondary" onclick="goPage(2)">← Back</button><button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button></div>
+  </div>
+  <div class="spage" id="sp4">
+    <div style="text-align:center;padding:40px 0">
+      <div style="font-size:64px;margin-bottom:20px">✅</div>
+      <div class="stitle" style="font-size:24px;margin-bottom:10px">All Set!</div>
+      <div class="ssub">Watchdog will now scan your Plex library and add all continuing shows to Sonarr.</div>
+      <button class="btn btn-success" style="margin-top:24px;padding:14px 36px;font-size:15px" onclick="launchApp()">🚀 Start Scanning</button>
     </div>
   </div>
+</div>
 </div>
 
 <!-- LOADING -->
-<div id="loading-overlay">
-  <div class="spinner"></div>
-  <div class="loading-text" id="loading-text">SCANNING PLEX LIBRARY</div>
-  <div class="loading-sub"  id="loading-sub">This may take a minute...</div>
-</div>
+<div id="loading"><div class="spinner"></div><div class="loading-title" id="lt">PLEASE WAIT</div><div class="loading-sub" id="ls"></div></div>
 
-<!-- MAIN APP -->
-<div id="main-app">
-
+<!-- APP -->
+<div id="app">
   <header>
     <div class="logo">
       <div class="logo-icon">🐕</div>
-      <div><div class="logo-text">Watchdog</div><div class="logo-sub">Plex → Sonarr Bridge</div></div>
+      <div><div class="logo-text">Watchdog</div><div class="logo-sub">PLEX → SONARR</div></div>
+    </div>
+    <div class="header-mid">
+      <button class="nav-tab active" onclick="showPage('dashboard',this)">📡 Dashboard</button>
+      <button class="nav-tab" onclick="showPage('series',this);loadSeries()">📺 Series</button>
     </div>
     <div class="header-right">
-      <div class="status-pill" id="watchdog-status-pill"><div class="dot"></div> IDLE</div>
-      <button class="btn btn-secondary btn-sm" onclick="toggleConfig()">⚙ Config</button>
-      <button class="btn btn-secondary btn-sm" id="stop-btn" onclick="stopWatchdog()" style="display:none">■ Stop</button>
+      <div class="status-pill" id="status-pill"><div class="dot"></div> IDLE</div>
+      <button class="btn btn-secondary btn-sm" onclick="toggleCfg()">⚙ Config</button>
+      <button class="btn btn-secondary btn-sm" id="stop-btn" style="display:none" onclick="stopWatchdog()">■ Stop</button>
     </div>
   </header>
 
-  <div id="config-panel">
-    <div class="section-title">Configuration</div>
-    <div class="config-grid">
-      <div class="config-field"><label>Plex URL</label><input type="text" id="cfg-plex-url"></div>
-      <div class="config-field"><label>Plex Token</label><input type="password" id="cfg-plex-token"></div>
-      <div class="config-field"><label>Plex TV Library</label><input type="text" id="cfg-plex-library"></div>
-      <div class="config-field"><label>Sonarr URL</label><input type="text" id="cfg-sonarr-url"></div>
-      <div class="config-field"><label>Sonarr API Key</label><input type="password" id="cfg-sonarr-key"></div>
-      <div class="config-field"><label>Root Folder</label><input type="text" id="cfg-root-folder"></div>
-      <div class="config-field"><label>Quality Profile</label><input type="text" id="cfg-quality"></div>
-      <div class="config-field"><label>TMDB API Key</label><input type="password" id="cfg-tmdb"></div>
-      <div class="config-field"><label>Poll Interval (s)</label><input type="number" id="cfg-interval"></div>
+  <!-- config panel -->
+  <div id="cfg-panel">
+    <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:2px">Configuration</div>
+    <div class="cfg-grid">
+      <div class="cff"><label>Plex URL</label><input id="c-pu"></div>
+      <div class="cff"><label>Plex Token</label><input type="password" id="c-pt"></div>
+      <div class="cff"><label>TV Library</label><input id="c-pl"></div>
+      <div class="cff"><label>Sonarr URL</label><input id="c-su"></div>
+      <div class="cff"><label>Sonarr API Key</label><input type="password" id="c-sk"></div>
+      <div class="cff"><label>Root Folder</label><input id="c-rf"></div>
+      <div class="cff"><label>Quality Profile</label><input id="c-qp"></div>
+      <div class="cff"><label>TMDB Key</label><input type="password" id="c-tm"></div>
+      <div class="cff"><label>Poll Interval (s)</label><input type="number" id="c-pi"></div>
     </div>
-    <div style="margin-top:16px;display:flex;gap:10px;">
-      <button class="btn btn-primary" onclick="saveConfig()">Save</button>
-      <button class="btn btn-secondary" onclick="toggleConfig()">Cancel</button>
-    </div>
-  </div>
-
-  <!-- SCAN PHASE -->
-  <div id="scan-phase">
-    <div id="scan-bar">
-      <div class="scan-stats">
-        <div class="stat"><div class="stat-val" id="stat-total">—</div><div class="stat-label">In Plex</div></div>
-        <div class="stat"><div class="stat-val accent" id="stat-new">—</div><div class="stat-label">Not in Sonarr</div></div>
-        <div class="stat"><div class="stat-val green" id="stat-sonarr">—</div><div class="stat-label">In Sonarr</div></div>
-        <div class="stat"><div class="stat-val blue" id="stat-selected">—</div><div class="stat-label">Selected</div></div>
-      </div>
-      <button class="btn btn-primary" id="scan-btn" onclick="startScan()">🔍 Scan Plex</button>
-    </div>
-    <div id="shows-section">
-      <div id="empty-state"><div class="big-icon">📡</div><h2>Ready to Scan</h2><p>Click Scan Plex to discover your library.</p></div>
-      <div id="results-area" style="display:none">
-        <div class="filter-bar">
-          <input type="text" id="search-input" placeholder="Search shows..." oninput="filterShows()">
-          <div class="filter-tabs">
-            <button class="filter-tab active" onclick="setFilter('all',this)">All</button>
-            <button class="filter-tab" onclick="setFilter('new',this)">New</button>
-            <button class="filter-tab" onclick="setFilter('sonarr',this)">In Sonarr</button>
-            <button class="filter-tab" onclick="setFilter('selected',this)">Selected</button>
-          </div>
-          <div class="bulk-actions">
-            <button class="btn btn-secondary btn-sm" onclick="selectAll()">Select All New</button>
-            <button class="btn btn-secondary btn-sm" onclick="deselectAll()">Deselect All</button>
-          </div>
-        </div>
-        <div class="shows-grid" id="shows-grid"></div>
-      </div>
-    </div>
-    <div id="scan-console-section">
-      <div class="console-header">
-        <div class="console-dots"><div class="console-dot red"></div><div class="console-dot yellow"></div><div class="console-dot green"></div></div>
-        <div class="console-title">watchdog.log — live output</div>
-        <button class="console-clear" onclick="clearConsole()">clear</button>
-      </div>
-      <div id="console-output" style="height:220px;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;">
-        <div class="log-line"><span class="log-time">--:--:--</span><span class="log-level INFO">INFO</span><span class="log-msg">Watchdog ready. Click Scan Plex to begin.</span></div>
-      </div>
-    </div>
-    <div id="approve-bar">
-      <div class="approve-info"><strong id="approve-count">0</strong> shows selected to import into Sonarr</div>
-      <button class="btn btn-secondary" onclick="deselectAll()">Clear Selection</button>
-      <button class="btn btn-success" id="approve-btn" onclick="approveAndStart()">✓ Approve &amp; Start Watchdog</button>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary btn-sm" onclick="saveCfg()">Save</button>
+      <button class="btn btn-secondary btn-sm" onclick="toggleCfg()">Cancel</button>
     </div>
   </div>
 
-  <!-- WATCHDOG PHASE — tabbed layout -->
-  <div id="watchdog-view">
-    <div class="wd-layout">
-
-      <!-- Sidebar tabs -->
-      <div class="wd-sidebar">
-        <button class="wd-tab active" onclick="switchTab('console',this)">
-          <span class="wd-tab-icon">🖥</span> Console
-        </button>
-        <button class="wd-tab" onclick="switchTab('connect',this)">
-          <span class="wd-tab-icon">🔗</span> Connect Files
-        </button>
+  <!-- PAGE 1: Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <div id="scan-progress">
+      <div class="scan-status-row">
+        <div class="scan-status-text" id="scan-status-text">🔍 Scanning Plex library...</div>
       </div>
-
-      <!-- Content area -->
-      <div class="wd-content">
-
-        <!-- Console pane -->
-        <div class="wd-pane active" id="pane-console">
-          <div class="console-header">
-            <div class="console-dots"><div class="console-dot red"></div><div class="console-dot yellow"></div><div class="console-dot green"></div></div>
-            <div class="console-title">watchdog.log — live output</div>
-            <button class="console-clear" onclick="clearConsole()">clear</button>
-          </div>
-          <div id="console-output-wd" style="flex:1;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;"></div>
-        </div>
-
-        <!-- Connect Files pane -->
-        <div class="wd-pane" id="pane-connect">
-          <div class="connect-header">
-            <input type="text" class="connect-search" id="series-search" placeholder="Search series..." oninput="filterSeries()">
-            <div class="connect-filters">
-              <button class="connect-filter active" onclick="setSeriesFilter('all',this)">All</button>
-              <button class="connect-filter" onclick="setSeriesFilter('ongoing',this)">Ongoing</button>
-              <button class="connect-filter" onclick="setSeriesFilter('ended',this)">Ended</button>
-              <button class="connect-filter" onclick="setSeriesFilter('pending',this)">Pending</button>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="loadSeriesList()">↻</button>
-          </div>
-          <div id="series-list" style="flex:1;overflow-y:auto;"></div>
-        </div>
-
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="console-wrap">
+      <div class="console-bar">
+        <div class="cdots"><div class="cdot r"></div><div class="cdot y"></div><div class="cdot g"></div></div>
+        <div class="ctitle">watchdog.log — live</div>
+        <button class="cclear" onclick="clearLog()">clear</button>
       </div>
+      <div id="console-out"></div>
     </div>
   </div>
 
-</div><!-- /main-app -->
+  <!-- PAGE 2: Series -->
+  <div class="page" id="page-series">
+    <div class="series-toolbar">
+      <input class="series-search" id="series-search" placeholder="Search series..." oninput="filterSeries()">
+      <div class="sf-tabs">
+        <button class="sf-tab active" onclick="setSF('all',this)">All</button>
+        <button class="sf-tab" onclick="setSF('ongoing',this)">Ongoing</button>
+        <button class="sf-tab" onclick="setSF('ended',this)">Ended</button>
+        <button class="sf-tab" onclick="setSF('pending',this)">Pending</button>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="loadSeries()">↻ Refresh</button>
+      <button class="btn btn-primary btn-sm" onclick="linkAll()">🔗 Link All Episodes</button>
+    </div>
+    <div class="series-list-wrap"><div id="series-list"></div></div>
+  </div>
+</div>
 
 <script>
-  let allShows = [], qualityProfiles = [], currentFilter = 'all', scanPolling = null;
-  let allSeries = [], seriesFilter = 'all';
+let allSeries=[], seriesFilter='all', logStreamStarted=false;
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
-  (async () => {
-    const r = await fetch('/api/watchdog/status');
-    const d = await r.json();
+// ── Boot ──────────────────────────────────────────────────────────────────────
+(async()=>{
+  const d=await(await fetch('/api/status')).json();
+  if(!d.setupComplete){
+    document.getElementById('setup-overlay').classList.add('show');
+    return;
+  }
+  showApp();
+  await replayLogs();
+  startLogStream();
+  if(d.initialScanDone){
+    setPill('running','🐕 RUNNING');
+    document.getElementById('stop-btn').style.display='block';
+  } else {
+    // Setup done but scan not yet run — start scan automatically
+    startInitialScan();
+  }
+})();
 
-    if (!d.setupComplete) {
-      // First ever launch — show setup wizard
-      document.getElementById('setup-overlay').classList.add('show');
-      return;
+function showApp(){
+  document.getElementById('app').style.display='flex';
+  document.getElementById('app').style.flexDirection='column';
+  document.getElementById('app').style.flex='1';
+  loadCfgPanel();
+}
+
+// ── Page nav ──────────────────────────────────────────────────────────────────
+function showPage(name,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  el.classList.add('active');
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+async function replayLogs(){
+  try{
+    const entries=await(await fetch('/api/logs/history')).json();
+    if(entries.length){
+      addLog('--:--:--','INFO',`── Replaying ${entries.length} log entries ──`);
+      entries.forEach(e=>addLog(e.time,e.level,e.msg));
+      addLog('--:--:--','INFO','── Live stream resuming ──');
     }
+  }catch(e){}
+}
+function startLogStream(){
+  if(logStreamStarted)return;
+  logStreamStarted=true;
+  const es=new EventSource('/api/logs/stream');
+  es.onmessage=e=>{const d=JSON.parse(e.data);if(!d.ping)addLog(d.time,d.level,d.msg)};
+}
+function addLog(t,l,m){
+  const el=document.getElementById('console-out');
+  const line=document.createElement('div');
+  line.className='ll';
+  line.innerHTML=`<span class="lt">${t}</span><span class="lv ${l}">${l}</span><span class="lm">${esc(m)}</span>`;
+  el.appendChild(line);
+  el.scrollTop=el.scrollHeight;
+}
+function clearLog(){document.getElementById('console-out').innerHTML=''}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
-    // Setup is done — show main app
-    document.getElementById('main-app').style.display = 'flex';
-    document.getElementById('main-app').style.flexDirection = 'column';
-    populateConfigPanel();
-    await replayLogs();
-    startLogStream();
+// ── Setup wizard ──────────────────────────────────────────────────────────────
+let curPage=1;
+function goPage(n){
+  document.getElementById(`sp${curPage}`).classList.remove('active');
+  document.getElementById(`t${curPage}`).classList.remove('active');
+  if(n>curPage)document.getElementById(`t${curPage}`).classList.add('done');
+  curPage=n;
+  document.getElementById(`sp${n}`).classList.add('active');
+  document.getElementById(`t${n}`).classList.add('active');
+}
+function setupData(){
+  return{
+    PLEX_URL:document.getElementById('s-pu').value.trim(),
+    PLEX_TOKEN:document.getElementById('s-pt').value.trim(),
+    PLEX_TV_LIBRARY:document.getElementById('s-pl').value.trim(),
+    SONARR_URL:document.getElementById('s-su').value.trim(),
+    SONARR_API_KEY:document.getElementById('s-sk').value.trim(),
+    SONARR_ROOT_FOLDER:document.getElementById('s-rf').value.trim(),
+    SONARR_QUALITY_PROFILE:document.getElementById('s-qp').value.trim(),
+    TMDB_API_KEY:document.getElementById('s-tm').value.trim(),
+    POLL_INTERVAL:parseInt(document.getElementById('s-pi').value)||30,
+  };
+}
+async function testConn(svc){
+  showTR(svc,null,'Testing...');
+  const r=await fetch('/api/test-connections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(setupData())});
+  const d=await r.json();
+  if(svc==='plex')  d.plex   ?showTR('plex',  true,'✅ Connected!')  :showTR('plex',  false,`❌ ${d.errors.plex  ||'Failed'}`);
+  if(svc==='sonarr')d.sonarr ?showTR('sonarr',true,'✅ Connected!')  :showTR('sonarr',false,`❌ ${d.errors.sonarr||'Failed'}`);
+  if(svc==='tmdb')  d.tmdb   ?showTR('tmdb',  true,'✅ Valid!')       :showTR('tmdb',  false,`❌ ${d.errors.tmdb  ||'Invalid'}`);
+}
+function showTR(svc,ok,msg){
+  const el=document.getElementById(`tr-${svc}`);
+  el.className='test-result show '+(ok===null?'':ok?'ok':'fail');
+  el.textContent=msg;
+}
+async function saveSetup(){
+  await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(setupData())});
+  goPage(4);
+}
+function launchApp(){
+  document.getElementById('setup-overlay').classList.remove('show');
+  showApp();
+  startLogStream();
+  startInitialScan();
+}
 
-    if (d.initialScanDone) {
-      // Initial scan was completed before — go straight to watchdog view
-      // Backend already auto-started the watchdog loop on boot
-      switchToWatchdogMode();
-    } else if (d.running) {
-      // Watchdog running but via current session
-      switchToWatchdogMode();
+// ── Initial scan ──────────────────────────────────────────────────────────────
+async function startInitialScan(){
+  document.getElementById('scan-progress').style.display='block';
+  setPill('scanning','🔍 SCANNING');
+  addLog(now(),'INFO','🚀 Starting initial Plex scan — adding continuing shows to Sonarr...');
+  await fetch('/api/start-initial-scan',{method:'POST'});
+  // Poll status until watchdog is running
+  const poll=setInterval(async()=>{
+    const d=await(await fetch('/api/status')).json();
+    if(d.watchdogRunning){
+      clearInterval(poll);
+      document.getElementById('scan-progress').style.display='none';
+      setPill('running','🐕 RUNNING');
+      document.getElementById('stop-btn').style.display='block';
     }
-    // else: show scan UI so user can do the first scan
-  })();
+  },2000);
+}
 
-  // ── Tab switching ─────────────────────────────────────────────────────────
-  function switchTab(name, el) {
-    document.querySelectorAll('.wd-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.wd-pane').forEach(p => p.classList.remove('active'));
-    el.classList.add('active');
-    document.getElementById('pane-' + name).classList.add('active');
-    if (name === 'connect' && allSeries.length === 0) loadSeriesList();
-  }
+// ── Config panel ──────────────────────────────────────────────────────────────
+async function loadCfgPanel(){
+  const cfg=await(await fetch('/api/config')).json();
+  document.getElementById('c-pu').value=cfg.PLEX_URL||'';
+  document.getElementById('c-pt').value=cfg.PLEX_TOKEN||'';
+  document.getElementById('c-pl').value=cfg.PLEX_TV_LIBRARY||'';
+  document.getElementById('c-su').value=cfg.SONARR_URL||'';
+  document.getElementById('c-sk').value=cfg.SONARR_API_KEY||'';
+  document.getElementById('c-rf').value=cfg.SONARR_ROOT_FOLDER||'';
+  document.getElementById('c-qp').value=cfg.SONARR_QUALITY_PROFILE||'';
+  document.getElementById('c-tm').value=cfg.TMDB_API_KEY||'';
+  document.getElementById('c-pi').value=cfg.POLL_INTERVAL||30;
+}
+function toggleCfg(){const p=document.getElementById('cfg-panel');p.style.display=p.style.display==='block'?'none':'block'}
+async function saveCfg(){
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    PLEX_URL:document.getElementById('c-pu').value,
+    PLEX_TOKEN:document.getElementById('c-pt').value,
+    PLEX_TV_LIBRARY:document.getElementById('c-pl').value,
+    SONARR_URL:document.getElementById('c-su').value,
+    SONARR_API_KEY:document.getElementById('c-sk').value,
+    SONARR_ROOT_FOLDER:document.getElementById('c-rf').value,
+    SONARR_QUALITY_PROFILE:document.getElementById('c-qp').value,
+    TMDB_API_KEY:document.getElementById('c-tm').value,
+    POLL_INTERVAL:parseInt(document.getElementById('c-pi').value),
+  })});
+  toggleCfg();
+}
 
-  // ── SSE Logs ──────────────────────────────────────────────────────────────
-  async function replayLogs() {
-    try {
-      const r = await fetch('/api/logs/history');
-      const entries = await r.json();
-      if (entries.length) {
-        appendLog('--:--:--', 'INFO', `── Replaying ${entries.length} log entries ──`);
-        entries.forEach(e => appendLog(e.time, e.level, e.msg));
-        appendLog('--:--:--', 'INFO', '── Live stream resuming ──');
-      }
-    } catch(e) {}
-  }
+// ── Watchdog ──────────────────────────────────────────────────────────────────
+async function stopWatchdog(){
+  await fetch('/api/watchdog/stop',{method:'POST'});
+  setPill('idle','■ STOPPED');
+  document.getElementById('stop-btn').style.display='none';
+}
 
-  let logStreamStarted = false;
-  function startLogStream() {
-    if (logStreamStarted) return;
-    logStreamStarted = true;
-    const es = new EventSource('/api/logs/stream');
-    es.onmessage = e => {
-      const d = JSON.parse(e.data);
-      if (d.ping) return;
-      appendLog(d.time, d.level, d.msg);
-    };
+// ── Series page ───────────────────────────────────────────────────────────────
+async function loadSeries(){
+  document.getElementById('series-list').innerHTML='<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0">Loading from Sonarr...</div>';
+  try{
+    allSeries=await(await fetch('/api/series/list')).json();
+    renderSeries();
+  }catch(e){
+    document.getElementById('series-list').innerHTML='<div style="color:var(--danger);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0">Failed to load series.</div>';
   }
+}
+function setSF(f,el){
+  seriesFilter=f;
+  document.querySelectorAll('.sf-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderSeries();
+}
+function filterSeries(){renderSeries()}
+function ongoing(s){return['continuing','returning series','in production','planned','pilot'].includes((s.status||'').toLowerCase())}
+function renderSeries(){
+  const q=(document.getElementById('series-search').value||'').toLowerCase();
+  let list=allSeries.filter(s=>!q||s.title.toLowerCase().includes(q));
+  if(seriesFilter==='ongoing')list=list.filter(s=>ongoing(s));
+  if(seriesFilter==='ended')  list=list.filter(s=>!ongoing(s));
+  if(seriesFilter==='pending')list=list.filter(s=>s.episodeFileCount<s.episodeCount);
+  const el=document.getElementById('series-list');
+  if(!list.length){el.innerHTML='<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0">No series found.</div>';return}
+  el.innerHTML=list.map(s=>{
+    const pct=s.episodeCount>0?Math.round(s.episodeFileCount/s.episodeCount*100):0;
+    const done=s.episodeCount>0&&s.episodeFileCount>=s.episodeCount;
+    const poster=s.poster?`<img class="sr-poster" src="${s.poster}" loading="lazy">`:`<div class="sr-poster-ph">📺</div>`;
+    return`<div class="sr" id="sr-${s.id}">
+      ${poster}
+      <div class="sr-info">
+        <div class="sr-title">${esc(s.title)}</div>
+        <div class="sr-bar-wrap">
+          <div class="sr-bar"><div class="sr-bar-fill" style="width:${pct}%"></div></div>
+          <div class="sr-eps">${s.episodeFileCount}/${s.episodeCount} eps</div>
+        </div>
+      </div>
+      <div class="sr-pill ${ongoing(s)?'ongoing':'ended'}">${ongoing(s)?'ONGOING':'ENDED'}</div>
+      <button class="link-btn ${done?'done':''}" id="lb-${s.id}" onclick="linkSeries(${s.id},'${esc(s.title).replace(/'/g,"\\'")}')">
+        ${done?'✓ Linked':'Link Episodes'}
+      </button>
+    </div>`;
+  }).join('');
+}
+async function linkSeries(id,title){
+  const btn=document.getElementById(`lb-${id}`);
+  btn.disabled=true;btn.textContent='⏳ Linking...';
+  showPage('dashboard',document.querySelector('.nav-tab'));
+  addLog(now(),'INFO',`🔗 Linking episodes for: ${title}`);
+  await fetch(`/api/series/${id}/link`,{method:'POST'});
+  setTimeout(async()=>{allSeries=await(await fetch('/api/series/list')).json();renderSeries()},4000);
+}
+async function linkAll(){
+  const btn=event.target;
+  btn.disabled=true;btn.textContent='⏳ Linking all...';
+  showPage('dashboard',document.querySelector('.nav-tab'));
+  addLog(now(),'INFO','🔗 Bulk link — linking all series...');
+  await fetch('/api/series/link-all',{method:'POST'});
+  setTimeout(()=>{btn.disabled=false;btn.textContent='🔗 Link All Episodes'},2000);
+  setTimeout(async()=>{allSeries=await(await fetch('/api/series/list')).json();renderSeries()},8000);
+}
 
-  function appendLog(time, level, msg) {
-    // Write to whichever console is visible
-    ['console-output', 'console-output-wd'].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const line = document.createElement('div');
-      line.className = 'log-line';
-      line.innerHTML = `<span class="log-time">${time}</span><span class="log-level ${level}">${level}</span><span class="log-msg">${esc(msg)}</span>`;
-      el.appendChild(line);
-      el.scrollTop = el.scrollHeight;
-    });
-  }
-
-  function clearConsole() {
-    ['console-output','console-output-wd'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = '';
-    });
-  }
-
-  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-  // ── Setup Wizard ──────────────────────────────────────────────────────────
-  let currentPage = 1;
-  function goToPage(n) {
-    document.getElementById(`page-${currentPage}`).classList.remove('active');
-    document.getElementById(`tab-${currentPage}`).classList.remove('active');
-    if (n > currentPage) document.getElementById(`tab-${currentPage}`).classList.add('done');
-    currentPage = n;
-    document.getElementById(`page-${n}`).classList.add('active');
-    document.getElementById(`tab-${n}`).classList.add('active');
-  }
-  function getSetupData() {
-    return {
-      PLEX_URL: document.getElementById('s-plex-url').value.trim(),
-      PLEX_TOKEN: document.getElementById('s-plex-token').value.trim(),
-      PLEX_TV_LIBRARY: document.getElementById('s-plex-library').value.trim(),
-      SONARR_URL: document.getElementById('s-sonarr-url').value.trim(),
-      SONARR_API_KEY: document.getElementById('s-sonarr-key').value.trim(),
-      SONARR_ROOT_FOLDER: document.getElementById('s-root-folder').value.trim(),
-      SONARR_QUALITY_PROFILE: document.getElementById('s-quality').value.trim(),
-      TMDB_API_KEY: document.getElementById('s-tmdb').value.trim(),
-      POLL_INTERVAL: parseInt(document.getElementById('s-interval').value) || 30,
-    };
-  }
-  async function testPlex() {
-    showTestResult('plex', null, 'Testing...');
-    const r = await fetch('/api/test-connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(getSetupData()) });
-    const d = await r.json();
-    d.plex ? showTestResult('plex', true, '✅ Connected!') : showTestResult('plex', false, `❌ ${d.errors.plex||'Failed'}`);
-  }
-  async function testSonarr() {
-    showTestResult('sonarr', null, 'Testing...');
-    const r = await fetch('/api/test-connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(getSetupData()) });
-    const d = await r.json();
-    d.sonarr ? showTestResult('sonarr', true, '✅ Connected!') : showTestResult('sonarr', false, `❌ ${d.errors.sonarr||'Failed'}`);
-  }
-  async function testTmdb() {
-    const data = getSetupData();
-    if (!data.TMDB_API_KEY) { showTestResult('tmdb', false, '❌ No API key entered'); return; }
-    showTestResult('tmdb', null, 'Testing...');
-    const r = await fetch('/api/test-connections', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
-    const d = await r.json();
-    d.tmdb ? showTestResult('tmdb', true, '✅ Valid!') : showTestResult('tmdb', false, `❌ ${d.errors.tmdb||'Invalid'}`);
-  }
-  function showTestResult(svc, ok, msg) {
-    const el = document.getElementById(`${svc}-test-result`);
-    el.className = 'test-result show ' + (ok === null ? '' : ok ? 'success' : 'fail');
-    el.textContent = msg;
-  }
-  async function saveSetup() {
-    await fetch('/api/setup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(getSetupData()) });
-    goToPage(4);
-  }
-  function launchApp() {
-    document.getElementById('setup-overlay').classList.remove('show');
-    document.getElementById('main-app').style.display = 'flex';
-    document.getElementById('main-app').style.flexDirection = 'column';
-    populateConfigPanel();
-    startLogStream();
-  }
-
-  // ── Config Panel ──────────────────────────────────────────────────────────
-  async function populateConfigPanel() {
-    const r = await fetch('/api/config');
-    const cfg = await r.json();
-    document.getElementById('cfg-plex-url').value     = cfg.PLEX_URL || '';
-    document.getElementById('cfg-plex-token').value   = cfg.PLEX_TOKEN || '';
-    document.getElementById('cfg-plex-library').value = cfg.PLEX_TV_LIBRARY || '';
-    document.getElementById('cfg-sonarr-url').value   = cfg.SONARR_URL || '';
-    document.getElementById('cfg-sonarr-key').value   = cfg.SONARR_API_KEY || '';
-    document.getElementById('cfg-root-folder').value  = cfg.SONARR_ROOT_FOLDER || '';
-    document.getElementById('cfg-quality').value      = cfg.SONARR_QUALITY_PROFILE || '';
-    document.getElementById('cfg-tmdb').value         = cfg.TMDB_API_KEY || '';
-    document.getElementById('cfg-interval').value     = cfg.POLL_INTERVAL || 30;
-  }
-  function toggleConfig() {
-    const p = document.getElementById('config-panel');
-    p.style.display = p.style.display === 'block' ? 'none' : 'block';
-  }
-  async function saveConfig() {
-    const cfg = {
-      PLEX_URL: document.getElementById('cfg-plex-url').value,
-      PLEX_TOKEN: document.getElementById('cfg-plex-token').value,
-      PLEX_TV_LIBRARY: document.getElementById('cfg-plex-library').value,
-      SONARR_URL: document.getElementById('cfg-sonarr-url').value,
-      SONARR_API_KEY: document.getElementById('cfg-sonarr-key').value,
-      SONARR_ROOT_FOLDER: document.getElementById('cfg-root-folder').value,
-      SONARR_QUALITY_PROFILE: document.getElementById('cfg-quality').value,
-      TMDB_API_KEY: document.getElementById('cfg-tmdb').value,
-      POLL_INTERVAL: parseInt(document.getElementById('cfg-interval').value),
-    };
-    await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
-    toggleConfig();
-  }
-
-  // ── Scan ──────────────────────────────────────────────────────────────────
-  async function startScan() {
-    document.getElementById('scan-btn').disabled = true;
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('results-area').style.display = 'none';
-    document.getElementById('approve-bar').style.display = 'none';
-    showLoading('SCANNING PLEX LIBRARY', 'Fetching shows and enriching with TMDB...');
-    setStatusPill('scanning', '🔍 SCANNING');
-    await fetch('/api/scan', { method:'POST' });
-    try { const r = await fetch('/api/quality-profiles'); qualityProfiles = await r.json(); } catch(e) { qualityProfiles = []; }
-    scanPolling = setInterval(async () => {
-      const r = await fetch('/api/scan/status');
-      const d = await r.json();
-      document.getElementById('loading-sub').textContent = `Processing ${d.count} shows...`;
-      if (d.complete) {
-        clearInterval(scanPolling);
-        allShows = d.results;
-        hideLoading();
-        renderShows(); updateStats();
-        document.getElementById('scan-btn').disabled = false;
-        document.getElementById('results-area').style.display = 'block';
-        document.getElementById('approve-bar').style.display = 'flex';
-        setStatusPill('idle', 'SCAN COMPLETE');
-      }
-    }, 1500);
-  }
-
-  function renderShows() {
-    const grid = document.getElementById('shows-grid');
-    grid.innerHTML = '';
-    const filtered = getFiltered();
-    if (!filtered.length) { grid.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;grid-column:1/-1;padding:40px 0;text-align:center;">No shows match filter.</div>'; }
-    else { filtered.forEach(s => grid.appendChild(makeCard(s))); }
-    updateApproveBar();
-  }
-
-  function makeCard(show) {
-    const card = document.createElement('div');
-    card.className = `show-card ${show.include?'selected':''} ${show.inSonarr?'in-sonarr':''} ${!show.include&&!show.inSonarr?'excluded':''}`;
-    card.dataset.id = show.id;
-    const poster = show.poster ? `<img src="${show.poster}" alt="${esc(show.title)}" loading="lazy">` : `<div class="card-poster-placeholder">📺</div>`;
-    const checkmark = show.inSonarr ? '✓' : (show.include ? '✓' : '');
-    const badge = show.inSonarr ? '<div class="sonarr-badge">IN SONARR</div>' : '';
-    const statusBadge = !show.inSonarr ? (show.isOngoing ? '<div class="status-badge ongoing">● ONGOING</div>' : '<div class="status-badge ended">✓ ENDED</div>') : '';
-    const profileOpts = qualityProfiles.map(p => `<option value="${p.id}" ${p.id===show.qualityProfileId?'selected':''}>${p.name}</option>`).join('');
-    const qualityHtml = !show.inSonarr && qualityProfiles.length ? `<div class="card-quality"><select onchange="setQuality(${show.id},this.value)" onclick="event.stopPropagation()">${profileOpts}</select></div>` : '';
-    card.innerHTML = `
-      <div class="card-poster">${poster}<div class="card-check">${checkmark}</div>${badge}${statusBadge}</div>
-      <div class="card-info">
-        <div class="card-title" title="${esc(show.title)}">${esc(show.title)}</div>
-        <div class="card-meta"><span>${show.seasons}S</span><span>${show.episodes}ep</span>${show.rating?`<span class="card-rating">★${show.rating}</span>`:''}${show.firstAir?`<span>${show.firstAir.slice(0,4)}</span>`:''}</div>
-        ${qualityHtml}
-      </div>`;
-    if (!show.inSonarr) card.addEventListener('click', () => toggleShow(show.id));
-    return card;
-  }
-
-  function toggleShow(id) { const s=allShows.find(x=>x.id===id); if(!s||s.inSonarr)return; s.include=!s.include; updateStats(); updateApproveBar(); const el=document.querySelector(`.show-card[data-id="${id}"]`); if(el)el.replaceWith(makeCard(s)); }
-  function setQuality(id,profileId) { const s=allShows.find(x=>x.id===id); if(s)s.qualityProfileId=parseInt(profileId); }
-  function selectAll()   { allShows.forEach(s=>{if(!s.inSonarr)s.include=true;}); renderShows();updateStats();updateApproveBar(); }
-  function deselectAll() { allShows.forEach(s=>{if(!s.inSonarr)s.include=false;}); renderShows();updateStats();updateApproveBar(); }
-  function getFiltered() {
-    const q=(document.getElementById('search-input').value||'').toLowerCase();
-    return allShows.filter(s=>{
-      if(q&&!s.title.toLowerCase().includes(q))return false;
-      if(currentFilter==='new')return !s.inSonarr;
-      if(currentFilter==='sonarr')return s.inSonarr;
-      if(currentFilter==='selected')return s.include&&!s.inSonarr;
-      return true;
-    });
-  }
-  function filterShows() { renderShows(); }
-  function setFilter(f,el) { currentFilter=f; document.querySelectorAll('.filter-tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); renderShows(); }
-  function updateStats() {
-    document.getElementById('stat-total').textContent    = allShows.length;
-    document.getElementById('stat-sonarr').textContent   = allShows.filter(s=>s.inSonarr).length;
-    document.getElementById('stat-new').textContent      = allShows.filter(s=>!s.inSonarr).length;
-    document.getElementById('stat-selected').textContent = allShows.filter(s=>s.include&&!s.inSonarr).length;
-  }
-  function updateApproveBar() { document.getElementById('approve-count').textContent = allShows.filter(s=>s.include&&!s.inSonarr).length; }
-
-  // ── Approve ───────────────────────────────────────────────────────────────
-  async function approveAndStart() {
-    const btn = document.getElementById('approve-btn');
-    btn.disabled=true; btn.textContent='⏳ Importing...';
-    showLoading('IMPORTING TO SONARR','Adding selected shows...');
-    setStatusPill('running','🐕 RUNNING');
-    await fetch('/api/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({results:allShows})});
-    hideLoading();
-    switchToWatchdogMode();
-  }
-
-  function switchToWatchdogMode() {
-    document.getElementById('scan-phase').style.display    = 'none';
-    document.getElementById('config-panel').style.display  = 'none';
-    document.getElementById('stop-btn').style.display      = 'block';
-    document.getElementById('watchdog-view').style.display = 'block';
-    setStatusPill('running','🐕 WATCHDOG RUNNING');
-  }
-
-  async function stopWatchdog() {
-    await fetch('/api/watchdog/stop',{method:'POST'});
-    setStatusPill('idle','■ STOPPED');
-    document.getElementById('stop-btn').style.display='none';
-  }
-
-  // ── Connect Files tab ─────────────────────────────────────────────────────
-  async function loadSeriesList() {
-    const listEl = document.getElementById('series-list');
-    listEl.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0 20px 4px;">Loading from Sonarr...</div>';
-    try {
-      const r = await fetch('/api/series/list');
-      allSeries = await r.json();
-      renderSeriesList();
-    } catch(e) {
-      listEl.innerHTML = '<div style="color:var(--danger);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0;">Failed to load series.</div>';
-    }
-  }
-
-  function setSeriesFilter(f, el) {
-    seriesFilter = f;
-    document.querySelectorAll('.connect-filter').forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-    renderSeriesList();
-  }
-
-  function filterSeries() { renderSeriesList(); }
-
-  function renderSeriesList() {
-    const q = (document.getElementById('series-search').value || '').toLowerCase();
-    let filtered = allSeries.filter(s => !q || s.title.toLowerCase().includes(q));
-    if (seriesFilter === 'ongoing') filtered = filtered.filter(s => isOngoing(s));
-    if (seriesFilter === 'ended')   filtered = filtered.filter(s => !isOngoing(s));
-    if (seriesFilter === 'pending') filtered = filtered.filter(s => s.episodeFileCount < s.episodeCount);
-    const listEl = document.getElementById('series-list');
-    if (!filtered.length) { listEl.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;padding:20px 0 20px 4px;">No series found.</div>'; return; }
-    listEl.innerHTML = filtered.map(s => {
-      const ongoing   = isOngoing(s);
-      const pct       = s.episodeCount > 0 ? Math.round((s.episodeFileCount / s.episodeCount) * 100) : 0;
-      const allLinked = s.episodeCount > 0 && s.episodeFileCount >= s.episodeCount;
-      return `
-        <div class="series-row" id="series-row-${s.id}">
-          <div class="series-info">
-            <div class="series-title">${esc(s.title)}</div>
-            <div class="file-bar"><div class="file-bar-fill" style="width:${pct}%"></div></div>
-          </div>
-          <div class="series-meta">${s.episodeFileCount}/${s.episodeCount} eps</div>
-          <div class="series-status-pill ${ongoing?'ongoing':'ended'}">${ongoing?'ONGOING':'ENDED'}</div>
-          <button class="connect-btn ${allLinked?'done':''}" id="connect-btn-${s.id}"
-            onclick="connectSeries(${s.id},'${esc(s.title).replace(/'/g,"\\'")}')">
-            ${allLinked ? '✓ Connected' : 'Connect Files'}
-          </button>
-        </div>`;
-    }).join('');
-  }
-
-  function isOngoing(s) {
-    return ['continuing','returning series','in production','planned','pilot'].includes((s.status||'').toLowerCase());
-  }
-
-  async function connectSeries(id, title) {
-    const btn = document.getElementById(`connect-btn-${id}`);
-    btn.disabled = true; btn.textContent = '⏳ Connecting...';
-    appendLog(new Date().toTimeString().slice(0,8), 'INFO', `🔗 Connecting files for: ${title}`);
-    await fetch(`/api/series/${id}/connect`, { method:'POST' });
-    setTimeout(async () => {
-      const r = await fetch('/api/series/list');
-      allSeries = await r.json();
-      renderSeriesList();
-    }, 4000);
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  function setStatusPill(state, label) {
-    const pill = document.getElementById('watchdog-status-pill');
-    pill.className = 'status-pill ' + state;
-    pill.innerHTML = `<div class="dot ${state!=='idle'?'pulse':''}"></div> ${label}`;
-  }
-  function showLoading(title, sub) { document.getElementById('loading-text').textContent=title; document.getElementById('loading-sub').textContent=sub; document.getElementById('loading-overlay').classList.add('show'); }
-  function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setPill(state,label){
+  const p=document.getElementById('status-pill');
+  p.className='status-pill '+(state==='running'?'running':state==='scanning'?'scanning':'');
+  p.innerHTML=`<div class="dot ${state!=='idle'?'pulse':''}"></div> ${label}`;
+}
+function now(){return new Date().toTimeString().slice(0,8)}
 </script>
 </body>
 </html>
