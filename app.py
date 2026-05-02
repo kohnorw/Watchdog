@@ -216,11 +216,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
     <div class="snav"><button class="btn btn-secondary" onclick="goPage(1)">← Back</button><button class="btn btn-primary" onclick="goPage(3)">Next → TMDB</button></div>
   </div>
   <div class="spage" id="sp3">
-    <div class="stitle">TMDB (Optional but recommended)</div>
-    <div class="ssub">Used to determine if a show is still ongoing. Free key at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a>.</div>
+    <div class="stitle">TMDB + Debrid</div>
+    <div class="ssub">TMDB checks if shows are ongoing. Free key at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a>. Debrid path is your mount root for repairing broken symlinks.</div>
     <div class="fg"><label>TMDB API Key</label><input type="password" id="s-tm" value="{{ config.TMDB_API_KEY }}"></div>
     <button class="test-btn" onclick="testConn('tmdb')">🔌 Test TMDB Key</button>
     <div class="test-result" id="tr-tmdb"></div>
+    <div class="fg" style="margin-top:20px"><label>Debrid Mount Path</label><input id="s-dp" placeholder="/mnt/zurg" value="{{ config.DEBRID_PATH }}"><div class="fhint">Root folder of your debrid mount e.g. /mnt/zurg or /mnt/realdebrid</div></div>
     <div class="snav"><button class="btn btn-secondary" onclick="goPage(2)">← Back</button><button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button></div>
   </div>
   <div class="spage" id="sp4">
@@ -267,6 +268,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
       <div class="cff"><label>Root Folder</label><input id="c-rf"></div>
       <div class="cff"><label>Quality Profile</label><input id="c-qp"></div>
       <div class="cff"><label>TMDB Key</label><input type="password" id="c-tm"></div>
+      <div class="cff"><label>Debrid Path</label><input id="c-dp"></div>
       <div class="cff"><label>Poll Interval (s)</label><input type="number" id="c-pi"></div>
       <div class="cff" style="display:flex;flex-direction:column;justify-content:flex-end">
         <label>Auto Link Episodes</label>
@@ -423,6 +425,7 @@ function setupData(){
     SONARR_ROOT_FOLDER:document.getElementById('s-rf').value.trim(),
     SONARR_QUALITY_PROFILE:document.getElementById('s-qp').value.trim(),
     TMDB_API_KEY:document.getElementById('s-tm').value.trim(),
+    DEBRID_PATH:document.getElementById('s-dp').value.trim(),
     POLL_INTERVAL:parseInt(document.getElementById('s-pi').value)||30,
   };
 }
@@ -486,6 +489,7 @@ async function loadCfgPanel(){
   document.getElementById('c-rf').value=cfg.SONARR_ROOT_FOLDER||'';
   document.getElementById('c-qp').value=cfg.SONARR_QUALITY_PROFILE||'';
   document.getElementById('c-tm').value=cfg.TMDB_API_KEY||'';
+  document.getElementById('c-dp').value=cfg.DEBRID_PATH||'';
   document.getElementById('c-pi').value=cfg.POLL_INTERVAL||30;
   document.getElementById('c-al').checked=cfg.AUTO_LINK!==false;
 }
@@ -500,6 +504,7 @@ async function saveCfg(){
     SONARR_ROOT_FOLDER:document.getElementById('c-rf').value,
     SONARR_QUALITY_PROFILE:document.getElementById('c-qp').value,
     TMDB_API_KEY:document.getElementById('c-tm').value,
+    DEBRID_PATH:document.getElementById('c-dp').value,
     POLL_INTERVAL:parseInt(document.getElementById('c-pi').value),
     AUTO_LINK:document.getElementById('c-al').checked,
   })});
@@ -666,6 +671,7 @@ CONFIG_DEFAULTS = {
     "INITIAL_SCAN_DONE":      False,
     "AUTO_LINK":              False,
     "IGNORED_SERIES":         [],   # tvdbIds the user has deleted and chosen not to re-add
+    "DEBRID_PATH":            "",   # root folder of debrid mount e.g. /mnt/zurg
 }
 
 def load_config():
@@ -823,29 +829,25 @@ def add_series_to_sonarr(tvdb_id, title, quality_profile_id, tmdb_id=None):
         return False
 
 # ── Symlink health check ─────────────────────────────────────────────────────
-def check_and_repair_symlinks(plex, sonarr_map):
+def check_and_repair_symlinks(sonarr_map):
     """
-    Walk every Sonarr series folder, find broken symlinks, then try to find
-    the correct file from Plex and recreate the symlink pointing to it.
+    Walk every Sonarr series folder, find broken symlinks, then search the
+    debrid directory for the file and recreate the symlink pointing to it.
     """
     repaired = 0
     removed  = 0
 
-    # Build a filename -> plex file path lookup from Plex library
-    logger.debug("🔧 Building Plex file index for symlink repair...")
+    # Build a filename -> full path lookup by walking the debrid directory
+    debrid_path = CONFIG.get("DEBRID_PATH", "").strip()
     plex_file_map = {}  # basename -> full path
-    try:
-        tv_lib = plex.library.section(CONFIG["PLEX_TV_LIBRARY"])
-        for show in tv_lib.all():
-            for season in show.seasons():
-                for ep in season.episodes():
-                    try:
-                        fp = ep.media[0].parts[0].file
-                        plex_file_map[os.path.basename(fp)] = fp
-                    except (IndexError, AttributeError):
-                        pass
-    except Exception as e:
-        logger.warning(f"  ⚠ Could not build Plex file index: {e}")
+    if debrid_path and os.path.isdir(debrid_path):
+        logger.debug(f"🔧 Scanning debrid folder for symlink repair: {debrid_path}")
+        for root, dirs, files in os.walk(debrid_path):
+            for fname in files:
+                plex_file_map[fname] = os.path.join(root, fname)
+    else:
+        logger.warning(f"  ⚠ Debrid path not set or not found — cannot repair symlinks")
+        return 0
 
     for tvdb_id, series in sonarr_map.items():
         path = series.get("path", "")
@@ -1099,7 +1101,7 @@ def do_watchdog_loop():
 
             # Step 2: always check and repair broken symlinks
             sonarr_map = get_sonarr_series_map()
-            broken = check_and_repair_symlinks(plex, sonarr_map)
+            broken = check_and_repair_symlinks(sonarr_map)
 
             # Step 3: if auto-link on, symlink new files and rescan
             if CONFIG.get("AUTO_LINK", True):
