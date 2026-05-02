@@ -93,7 +93,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 .progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s;width:0%}
 
 /* console */
-.console-wrap{display:flex;flex-direction:column;margin:20px 28px;border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:#080a0c;height:calc(100vh - 160px);min-height:300px}
+.console-wrap{display:flex;flex-direction:column;margin:20px 28px;border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:#080a0c}
 .console-bar{display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
 .cdots{display:flex;gap:5px}
 .cdot{width:10px;height:10px;border-radius:50%}
@@ -101,7 +101,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 .ctitle{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);flex:1;text-align:center;letter-spacing:1px}
 .cclear{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 8px}
 .cclear:hover{color:var(--accent)}
-#console-out{flex:1;overflow-y:auto;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8}
+#console-out{padding:10px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7}
 #console-out::-webkit-scrollbar{width:4px}
 #console-out::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
@@ -238,6 +238,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
       <div class="cff"><label>Quality Profile</label><input id="c-qp"></div>
       <div class="cff"><label>TMDB Key</label><input type="password" id="c-tm"></div>
       <div class="cff"><label>Poll Interval (s)</label><input type="number" id="c-pi"></div>
+      <div class="cff" style="display:flex;flex-direction:column;justify-content:flex-end">
+        <label>Auto Link Episodes</label>
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer">
+          <input type="checkbox" id="c-al" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">Link episodes automatically on each scan</span>
+        </label>
+      </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-primary btn-sm" onclick="saveCfg()">Save</button>
@@ -327,9 +334,8 @@ async function replayLogs(){
   try{
     const entries=await(await fetch('/api/logs/history')).json();
     if(entries.length){
-      addLog('--:--:--','INFO',`── Replaying ${entries.length} log entries ──`);
+      // Add oldest first so newest ends up at top after insertBefore
       entries.forEach(e=>addLog(e.time,e.level,e.msg));
-      addLog('--:--:--','INFO','── Live stream resuming ──');
     }
   }catch(e){}
 }
@@ -345,6 +351,8 @@ function addLog(t,l,m){
   line.className='ll';
   line.innerHTML=`<span class="lt">${t}</span><span class="lv ${l}">${l}</span><span class="lm">${esc(m)}</span>`;
   out.insertBefore(line, out.firstChild);
+  // Keep only 10 newest
+  while(out.children.length>10) out.removeChild(out.lastChild);
 }
 function clearLog(){document.getElementById('console-out').innerHTML=''}
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
@@ -426,6 +434,7 @@ async function loadCfgPanel(){
   document.getElementById('c-qp').value=cfg.SONARR_QUALITY_PROFILE||'';
   document.getElementById('c-tm').value=cfg.TMDB_API_KEY||'';
   document.getElementById('c-pi').value=cfg.POLL_INTERVAL||30;
+  document.getElementById('c-al').checked=cfg.AUTO_LINK!==false;
 }
 function toggleCfg(){const p=document.getElementById('cfg-panel');p.style.display=p.style.display==='block'?'none':'block'}
 async function saveCfg(){
@@ -439,6 +448,7 @@ async function saveCfg(){
     SONARR_QUALITY_PROFILE:document.getElementById('c-qp').value,
     TMDB_API_KEY:document.getElementById('c-tm').value,
     POLL_INTERVAL:parseInt(document.getElementById('c-pi').value),
+    AUTO_LINK:document.getElementById('c-al').checked,
   })});
   toggleCfg();
 }
