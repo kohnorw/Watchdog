@@ -221,7 +221,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
     <div class="fg"><label>TMDB API Key</label><input type="password" id="s-tm" value="{{ config.TMDB_API_KEY }}"></div>
     <button class="test-btn" onclick="testConn('tmdb')">🔌 Test TMDB Key</button>
     <div class="test-result" id="tr-tmdb"></div>
-    <div class="fg" style="margin-top:20px"><label>Debrid Mount Path</label><input id="s-dp" placeholder="/mnt/zurg" value="{{ config.DEBRID_PATH }}"><div class="fhint">Root folder of your debrid mount e.g. /mnt/zurg or /mnt/realdebrid</div></div>
+    <div class="fg" style="margin-top:20px"><label>Debrid Mount Path</label><input id="s-dp" placeholder="/docker/zurg/mnt/zurg/shows" value="{{ config.DEBRID_PATH }}"><div class="fhint">Root folder of your debrid shows e.g. /docker/zurg/mnt/zurg/shows</div></div>
     <div class="snav"><button class="btn btn-secondary" onclick="goPage(2)">← Back</button><button class="btn btn-primary" onclick="saveSetup()">Save & Start →</button></div>
   </div>
   <div class="spage" id="sp4">
@@ -671,7 +671,7 @@ CONFIG_DEFAULTS = {
     "INITIAL_SCAN_DONE":      False,
     "AUTO_LINK":              False,
     "IGNORED_SERIES":         [],   # tvdbIds the user has deleted and chosen not to re-add
-    "DEBRID_PATH":            "",   # root folder of debrid mount e.g. /mnt/zurg
+    "DEBRID_PATH":            "/docker/zurg/mnt/zurg/shows",   # root folder of debrid mount
 }
 
 def load_config():
@@ -837,17 +837,71 @@ def check_and_repair_symlinks(sonarr_map):
     repaired = 0
     removed  = 0
 
-    # Build a filename -> full path lookup by walking the debrid directory
+    # Build a filename -> full path lookup by searching debrid directory
     debrid_path = CONFIG.get("DEBRID_PATH", "").strip()
     plex_file_map = {}  # basename -> full path
-    if debrid_path and os.path.isdir(debrid_path):
-        logger.debug(f"🔧 Scanning debrid folder for symlink repair: {debrid_path}")
-        for root, dirs, files in os.walk(debrid_path):
-            for fname in files:
-                plex_file_map[fname] = os.path.join(root, fname)
-    else:
+    if not debrid_path or not os.path.isdir(debrid_path):
         logger.warning(f"  ⚠ Debrid path not set or not found — cannot repair symlinks")
         return 0
+
+    import subprocess
+
+    logger.info(f"🔧 Building debrid file index from: {debrid_path}")
+    try:
+        show_folders = os.listdir(debrid_path)
+        logger.info(f"  📁 Found {len(show_folders)} folders in debrid root")
+        for show_folder in show_folders:
+            show_path = os.path.join(debrid_path, show_folder)
+            if not os.path.isdir(show_path):
+                continue
+            folder_files = 0
+            for root, dirs, files in os.walk(show_path):
+                for fname in files:
+                    plex_file_map[fname] = os.path.join(root, fname)
+                    folder_files += 1
+            if folder_files:
+                logger.debug(f"    📂 {show_folder} — {folder_files} files indexed")
+        logger.info(f"  ✅ Debrid index built — {len(plex_file_map)} total files indexed")
+    except Exception as e:
+        logger.warning(f"  ⚠ Could not scan debrid path: {e}")
+        return 0
+
+    def find_in_debrid(filename, series_title):
+        """
+        First try exact filename match from pre-built index.
+        If not found, use ls | grep on the debrid folder filtered by series name.
+        """
+        # Step 1: exact match from index
+        if filename in plex_file_map:
+            logger.debug(f"    ✓ Found in index: {filename}")
+            return plex_file_map[filename]
+
+        # Step 2: grep debrid folder for series name
+        search_term = series_title.split('(')[0].strip()
+        logger.info(f"    🔍 Not in index — searching debrid for '{search_term}'...")
+        try:
+            result = subprocess.run(
+                f"ls {repr(debrid_path)} | grep -i {repr(search_term)}",
+                shell=True, capture_output=True, text=True
+            )
+            matched_folders = [f for f in result.stdout.strip().splitlines() if f]
+            if not matched_folders:
+                logger.info(f"    ❌ No debrid folder matched '{search_term}'")
+                return None
+            logger.info(f"    📁 Matched {len(matched_folders)} folder(s): {', '.join(matched_folders)}")
+            for folder in matched_folders:
+                folder_path = os.path.join(debrid_path, folder)
+                logger.info(f"    🔎 Searching in: {folder_path}")
+                for root, dirs, files in os.walk(folder_path):
+                    for fname in files:
+                        if fname == filename:
+                            full = os.path.join(root, fname)
+                            logger.info(f"    ✅ Found: {full}")
+                            return full
+            logger.info(f"    ❌ '{filename}' not found in any matched folder")
+        except Exception as e:
+            logger.warning(f"    ⚠ grep search failed for '{series_title}': {e}")
+        return None
 
     for tvdb_id, series in sonarr_map.items():
         path = series.get("path", "")
@@ -870,8 +924,8 @@ def check_and_repair_symlinks(sonarr_map):
                     logger.warning(f"  ⚠ Could not remove broken symlink {fname}: {e}")
                     continue
 
-                # Look up by filename in Plex
-                new_target = plex_file_map.get(fname)
+                # Look up by filename in debrid, using series name for grep fallback
+                new_target = find_in_debrid(fname, series.get("title", ""))
                 if new_target and os.path.exists(new_target):
                     try:
                         os.symlink(new_target, fpath)
