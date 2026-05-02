@@ -929,6 +929,7 @@ def check_and_repair_symlinks(sonarr_map):
                 if new_target and os.path.exists(new_target):
                     try:
                         os.symlink(new_target, fpath)
+                        os.chmod(fpath, 0o777)
                         repaired += 1
                         logger.info(f"  🔧 Repaired symlink: {fname}")
                         logger.debug(f"      {old_target} → {new_target}")
@@ -991,6 +992,7 @@ def symlink_series(plex_show, sonarr_series):
 
             try:
                 os.symlink(src, dst)
+                os.chmod(dst, 0o777)
                 created += 1
                 logger.debug(f"    🔗 Symlinked S{snum:02}E{plex_ep.index:02} → {dst}")
             except Exception as e:
@@ -1011,10 +1013,16 @@ def rescan_series(sonarr_series_id, title):
         return False
 
 def symlink_and_rescan_all(plex, sonarr_map):
-    """Symlink Plex files into Sonarr folders then trigger rescan."""
+    """
+    Always symlink Plex files into Sonarr folders.
+    Only trigger rescan if AUTO_LINK is enabled.
+    """
     logger.info("🔗 Starting symlink pass...")
     tv_lib    = plex.library.section(CONFIG["PLEX_TV_LIBRARY"])
     total_new = 0
+    rescanned = 0
+    auto_link = CONFIG.get("AUTO_LINK", False)
+
     for show in tv_lib.all():
         tvdb_id = None
         for guid in show.guids:
@@ -1027,9 +1035,16 @@ def symlink_and_rescan_all(plex, sonarr_map):
         created = symlink_series(show, sonarr_series)
         total_new += created
         if created:
-            rescan_series(sonarr_series["id"], sonarr_series["title"])
-            time.sleep(0.3)
-    logger.info(f"✅ Symlink pass complete — {total_new} new symlinks created")
+            logger.info(f"  🔗 {show.title} — {created} new symlinks")
+            if auto_link:
+                rescan_series(sonarr_series["id"], sonarr_series["title"])
+                rescanned += 1
+                time.sleep(0.3)
+
+    if total_new:
+        logger.info(f"✅ Symlink pass — {total_new} new symlinks created, {rescanned} series rescanned")
+    else:
+        logger.debug("✅ Symlink pass — no new symlinks needed")
 
 def rescan_all_series(sonarr_map):
     """Trigger disk rescan for all series without symlinking."""
@@ -1100,13 +1115,10 @@ def do_initial_scan():
 
     logger.info(f"✅ Initial scan done — {added} added, {skipped_exists} already in Sonarr, {skipped_ended} ended/skipped")
 
-    # Link episodes for all added series
-    if CONFIG.get("AUTO_LINK", True):
-        logger.info("🔗 Linking episodes for all series...")
-        sonarr_map = get_sonarr_series_map()
-        rescan_all_series(sonarr_map)
-    else:
-        logger.info("⏭ Auto-link is disabled — skipping episode linking")
+    # Always symlink episodes; AUTO_LINK controls whether rescan fires
+    logger.info("🔗 Symlinking episodes for all series...")
+    sonarr_map = get_sonarr_series_map()
+    symlink_and_rescan_all(plex, sonarr_map)
 
     CONFIG["INITIAL_SCAN_DONE"] = True
     save_config_to_disk(CONFIG)
@@ -1157,11 +1169,13 @@ def do_watchdog_loop():
             sonarr_map = get_sonarr_series_map()
             broken = check_and_repair_symlinks(sonarr_map)
 
-            # Step 3: if auto-link on, symlink new files and rescan
-            if CONFIG.get("AUTO_LINK", True):
-                symlink_and_rescan_all(plex, sonarr_map)
-            elif broken:
-                # Even if auto-link is off, rescan series where symlinks were repaired
+            # Step 3: always create new symlinks for any new Plex episodes
+            # AUTO_LINK controls whether Sonarr rescan is triggered after
+            symlink_and_rescan_all(plex, sonarr_map)
+
+            # Step 4: if symlinks were repaired and AUTO_LINK is off,
+            # still rescan those series so Sonarr notices the fix
+            if broken and not CONFIG.get("AUTO_LINK", False):
                 logger.info("🔍 Rescanning series with repaired symlinks...")
                 for tvdb_id, series in sonarr_map.items():
                     path = series.get("path", "")
@@ -1201,9 +1215,8 @@ def auto_start():
             add_series_to_sonarr(tvdb_id, show.title, quality_profile_id)
             added += 1
             time.sleep(0.3)
-        if CONFIG.get("AUTO_LINK", True):
-            sonarr_map = get_sonarr_series_map()
-            symlink_and_rescan_all(plex, sonarr_map)
+        sonarr_map = get_sonarr_series_map()
+        symlink_and_rescan_all(plex, sonarr_map)
         logger.info(f"✅ Auto-start complete — {added} new shows added")
     except Exception as e:
         logger.error(f"Auto-start error: {e}")
