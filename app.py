@@ -558,17 +558,17 @@ function renderSeries(){
         </div>
       </div>
       <div class="sr-pill ${ongoing(s)?'ongoing':'ended'}">${ongoing(s)?'ONGOING':'ENDED'}</div>
-      <button class="link-btn ${done?'done':''}" id="lb-${s.id}" onclick="linkSeries(${s.id},'${esc(s.title).replace(/'/g,"\\\\'")}')">
-        ${done?'✓ Done':'Rescan'}
+      <button class="link-btn ${done?'done':''}" id="lb-${s.id}" onclick="linkSeries(${s.id},s.title)">
         ${done?'✓ Done':'Rescan'}
       </button>
-      <button class="link-btn" style="border-color:var(--danger);color:var(--danger)" onclick="event.stopPropagation();deleteTarget={id:${s.id},title:esc(s.title)};document.getElementById('modal-series-title').textContent=s.title;document.getElementById('modal-overlay').classList.add('show')">🗑</button>
+      <button class="link-btn" style="border-color:var(--danger);color:var(--danger)" onclick="event.stopPropagation();confirmDelete(${s.id},s.title)">🗑</button>
+    </div>`;
     </div>`;
 }
 async function linkSeries(id,title){
   const btn=document.getElementById(`lb-${id}`);
-  btn.disabled=true;btn.textContent='⏳ Rescanning...';
-  showPage('dashboard',document.querySelector('.nav-tab'));
+  if(btn){btn.disabled=true;btn.textContent='⏳ Rescanning...';}
+  showPage('dashboard',document.querySelectorAll('.nav-tab')[0]);
   addLog(now(),'INFO',`🔍 Rescanning: ${title}`);
   await fetch(`/api/series/${id}/link`,{method:'POST'});
   setTimeout(async()=>{allSeries=await(await fetch('/api/series/list')).json();renderSeries()},4000);
@@ -594,8 +594,7 @@ function now(){return new Date().toTimeString().slice(0,8)}
 // ── Delete & re-add ───────────────────────────────────────────────────────────
 let deleteTarget={id:null,title:''};
 
-function confirmDelete(id,title,e){
-  e.stopPropagation();
+function confirmDelete(id,title){
   deleteTarget={id,title};
   document.getElementById('modal-series-title').textContent=title;
   document.getElementById('modal-overlay').classList.add('show');
