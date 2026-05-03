@@ -274,7 +274,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
         <label>Auto Link Episodes</label>
         <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer">
           <input type="checkbox" id="c-al" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">Link episodes automatically on each scan</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">Auto-sync all series symlinks on every scan (off = manual per series only)</span>
         </label>
       </div>
     </div>
@@ -491,7 +491,7 @@ async function loadCfgPanel(){
   document.getElementById('c-tm').value=cfg.TMDB_API_KEY||'';
   document.getElementById('c-dp').value=cfg.DEBRID_PATH||'';
   document.getElementById('c-pi').value=cfg.POLL_INTERVAL||30;
-  document.getElementById('c-al').checked=cfg.AUTO_LINK!==false;
+  document.getElementById('c-al').checked=cfg.AUTO_SYMLINK===true;
 }
 function toggleCfg(){const p=document.getElementById('cfg-panel');p.style.display=p.style.display==='block'?'none':'block'}
 async function saveCfg(){
@@ -506,7 +506,7 @@ async function saveCfg(){
     TMDB_API_KEY:document.getElementById('c-tm').value,
     DEBRID_PATH:document.getElementById('c-dp').value,
     POLL_INTERVAL:parseInt(document.getElementById('c-pi').value),
-    AUTO_LINK:document.getElementById('c-al').checked,
+    AUTO_SYMLINK:document.getElementById('c-al').checked,
   })});
   toggleCfg();
 }
@@ -560,9 +560,10 @@ function renderSeries(){
       <div class="sr-pill ${ongoing(s)?'ongoing':'ended'}">${ongoing(s)?'ONGOING':'ENDED'}</div>
       <button class="link-btn ${done?'done':''}" id="lb-${s.id}" onclick="linkSeries(${s.id},'${esc(s.title).replace(/'/g,"\\\\'")}')">
         ${done?'✓ Done':'Rescan'}
+        ${done?'✓ Done':'Rescan'}
       </button>
+      <button class="link-btn" style="border-color:var(--danger);color:var(--danger)" onclick="event.stopPropagation();deleteTarget={id:${s.id},title:esc(s.title)};document.getElementById('modal-series-title').textContent=s.title;document.getElementById('modal-overlay').classList.add('show')">🗑</button>
     </div>`;
-  }).join('');
 }
 async function linkSeries(id,title){
   const btn=document.getElementById(`lb-${id}`);
@@ -669,7 +670,7 @@ CONFIG_DEFAULTS = {
     "POLL_INTERVAL":          30,
     "SETUP_COMPLETE":         False,
     "INITIAL_SCAN_DONE":      False,
-    "AUTO_LINK":              False,
+    "AUTO_SYMLINK":              False,
     "IGNORED_SERIES":         [],   # tvdbIds the user has deleted and chosen not to re-add
     "DEBRID_PATH":            "/docker/zurg/mnt/zurg/shows",   # root folder of debrid mount
 }
@@ -793,15 +794,23 @@ def get_show_status(tvdb_id, title, tmdb_id=None):
 
 # ── Add series to Sonarr ──────────────────────────────────────────────────────
 def add_series_to_sonarr(tvdb_id, title, quality_profile_id, tmdb_id=None):
-    """Add a continuing show to Sonarr monitoring future episodes only."""
+    """
+    Add a continuing show to Sonarr:
+    1. Add with monitor=all so all existing episodes are marked as missing
+    2. Symlinks will be created by the symlink pass
+    3. Sonarr rescan will import the symlinked files, marking them as downloaded
+    """
     try:
         results = sonarr_get(f"series/lookup?term=tvdb:{tvdb_id}")
         if not results:
             logger.warning(f"  ⚠ No Sonarr lookup result for '{title}' (TVDB:{tvdb_id})")
             return False
         lookup = results[0]
-        # Only monitor future — don't search for missing back catalogue
+
+        # Monitor all seasons and episodes — marks everything missing so
+        # Sonarr knows what to look for when we import the symlinks
         seasons = [dict(s, monitored=True) for s in lookup.get("seasons", [])]
+
         payload = {
             "title":            lookup["title"],
             "tvdbId":           tvdb_id,
@@ -810,16 +819,24 @@ def add_series_to_sonarr(tvdb_id, title, quality_profile_id, tmdb_id=None):
             "seasonFolder":     True,
             "monitored":        True,
             "addOptions": {
-                "searchForMissingEpisodes":     False,
+                "searchForMissingEpisodes":     False,  # don't download — we'll symlink
                 "searchForCutoffUnmetEpisodes": False,
-                "monitor":                      "future",
+                "monitor":                      "all",  # mark all episodes as missing
             },
             "seasons": seasons,
             "images":  lookup.get("images", []),
             "path":    f"{CONFIG['SONARR_ROOT_FOLDER']}/{lookup['title']}",
         }
-        sonarr_post("series", payload)
-        logger.info(f"  ✅ Added to Sonarr: {lookup['title']} (TVDB:{tvdb_id}) — monitoring future episodes")
+        added = sonarr_post("series", payload)
+        sonarr_id = added.get("id")
+        logger.info(f"  ✅ Added to Sonarr: {lookup['title']} (TVDB:{tvdb_id}) — all episodes marked missing")
+
+        # Give Sonarr a moment to settle then trigger a rescan so it picks up symlinks
+        if sonarr_id:
+            time.sleep(2)
+            logger.info(f"  🔍 Triggering rescan to import any existing symlinks for '{lookup['title']}'")
+            rescan_series(sonarr_id, lookup["title"])
+
         return True
     except requests.HTTPError as e:
         if e.response.status_code == 400:
@@ -929,7 +946,6 @@ def check_and_repair_symlinks(sonarr_map):
                 if new_target and os.path.exists(new_target):
                     try:
                         os.symlink(new_target, fpath)
-                        os.chmod(fpath, 0o777)
                         repaired += 1
                         logger.info(f"  🔧 Repaired symlink: {fname}")
                         logger.debug(f"      {old_target} → {new_target}")
@@ -945,62 +961,135 @@ def check_and_repair_symlinks(sonarr_map):
     return removed
 
 # ── Symlink + Rescan ──────────────────────────────────────────────────────────
+def find_debrid_files_for_series(series_title):
+    """Search debrid folder for video files matching this series using ls | grep."""
+    import subprocess, re
+    debrid_path = CONFIG.get("DEBRID_PATH", "").strip()
+    if not debrid_path or not os.path.isdir(debrid_path):
+        logger.warning(f"  ⚠ Debrid path not found: {debrid_path}")
+        return []
+    VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m4v", ".ts", ".mov", ".wmv"}
+    search_term = series_title.split("(")[0].strip()
+    logger.info(f"  🔍 Searching debrid for '{search_term}' in {debrid_path}")
+    try:
+        result = subprocess.run(
+            f"ls {repr(debrid_path)} | grep -i {repr(search_term)}",
+            shell=True, capture_output=True, text=True
+        )
+        matched_folders = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
+    except Exception as e:
+        logger.warning(f"  ⚠ Debrid search failed for '{series_title}': {e}")
+        return []
+    if not matched_folders:
+        logger.debug(f"  ❌ No debrid folder matched '{search_term}'")
+        return []
+    logger.info(f"  📁 Matched: {', '.join(matched_folders)}")
+    files = []
+    for folder in matched_folders:
+        folder_path = os.path.join(debrid_path, folder)
+        count = 0
+        for root, dirs, fnames in os.walk(folder_path):
+            for fname in fnames:
+                if os.path.splitext(fname)[1].lower() in VIDEO_EXTS:
+                    files.append(os.path.join(root, fname))
+                    count += 1
+        logger.info(f"    📼 {folder} — {count} video files found")
+    return files
+
 def symlink_series(plex_show, sonarr_series):
     """
-    For each episode in Plex, create a symlink inside the Sonarr series folder
-    so Sonarr can find and mark the file as downloaded on rescan.
+    Find video files in debrid for this series and symlink into Sonarr folder.
+    Recreates missing directories and symlinks automatically.
     """
-    title        = sonarr_series["title"]
-    series_path  = sonarr_series.get("path", "")
+    import re
+    title       = sonarr_series["title"]
+    series_path = sonarr_series.get("path", "")
     if not series_path:
-        logger.warning(f"  ⚠ No path set in Sonarr for '{title}' — skipping symlink")
+        logger.warning(f"  ⚠ No Sonarr path for '{title}' — skipping")
         return 0
+
+    debrid_files = find_debrid_files_for_series(title)
+    if not debrid_files:
+        return 0
+
+    # Recreate series root if missing
+    if not os.path.exists(series_path):
+        logger.info(f"  📁 Recreating missing series directory: {series_path}")
+    os.makedirs(series_path, exist_ok=True)
+    os.chmod(series_path, 0o777)
 
     created = 0
     skipped = 0
+    repaired = 0
 
-    for plex_season in plex_show.seasons():
-        snum = plex_season.seasonNumber
-        if snum == 0:
-            continue
-        season_dir = os.path.join(series_path, f"Season {snum:02}")
+    for src in debrid_files:
+        filename = os.path.basename(src)
+
+        # Detect season number from folder name or filename
+        season_num = None
+        for part in src.replace("\\", "/").split("/"):
+            if part.lower().startswith("season "):
+                try:
+                    season_num = int(part.lower().replace("season ", ""))
+                except ValueError:
+                    pass
+        if season_num is None:
+            m = re.search(r"[Ss](\d{1,2})[Ee]\d{1,2}", filename)
+            if m:
+                season_num = int(m.group(1))
+
+        season_dir = os.path.join(series_path, f"Season {season_num:02}") if season_num else series_path
+
+        # Recreate season dir if missing
+        if not os.path.exists(season_dir):
+            logger.info(f"    📁 Recreating missing season directory: {season_dir}")
         os.makedirs(season_dir, exist_ok=True)
+        os.chmod(season_dir, 0o777)
 
-        for plex_ep in plex_season.episodes():
-            try:
-                src = plex_ep.media[0].parts[0].file
-            except (IndexError, AttributeError):
-                continue
+        dst = os.path.join(season_dir, filename)
 
-            filename = os.path.basename(src)
-            dst = os.path.join(season_dir, filename)
-
-            # If symlink exists and is valid — skip
-            if os.path.islink(dst) and os.path.exists(dst):
+        # Valid symlink pointing to same src — skip
+        if os.path.islink(dst) and os.path.exists(dst):
+            if os.readlink(dst) == src:
                 skipped += 1
                 continue
+            # Target changed — update
+            logger.info(f"    🔄 Updating symlink (target changed): {filename}")
+            os.remove(dst)
+            repaired += 1
 
-            # If symlink is broken — remove and recreate
-            if os.path.islink(dst) and not os.path.exists(dst):
-                logger.info(f"    🔧 Repairing broken symlink S{snum:02}E{plex_ep.index:02}")
-                os.remove(dst)
+        # Broken symlink or missing — recreate
+        elif os.path.islink(dst) and not os.path.exists(dst):
+            logger.info(f"    🔧 Recreating broken symlink: {filename}")
+            os.remove(dst)
+            repaired += 1
 
-            # If a real file already exists there — skip
-            if os.path.exists(dst):
-                skipped += 1
-                continue
+        # Missing entirely — will be created below
+        elif os.path.exists(dst):
+            # Real file already exists — skip
+            skipped += 1
+            continue
 
-            try:
-                os.symlink(src, dst)
-                os.chmod(dst, 0o777)
-                created += 1
-                logger.debug(f"    🔗 Symlinked S{snum:02}E{plex_ep.index:02} → {dst}")
-            except Exception as e:
-                logger.warning(f"    ⚠ Symlink failed for S{snum:02}E{plex_ep.index:02}: {e}")
+        try:
+            os.symlink(src, dst)
+            created += 1
+            if repaired:
+                logger.info(f"    🔗 Recreated: {filename} -> {src}")
+            else:
+                logger.info(f"    🔗 Symlinked: {filename}")
+            logger.debug(f"       -> {src}")
+        except Exception as e:
+            logger.warning(f"    ⚠ Symlink failed '{filename}': {e}")
 
-    if created:
-        logger.info(f"  🔗 '{title}' — {created} symlinks created, {skipped} already existed")
+    total_changed = created + repaired
+    if total_changed:
+        logger.info(f"  ✅ '{title}' — {created} new, {repaired} recreated, {skipped} unchanged")
+        rescan_series(sonarr_series["id"], title)
+    else:
+        logger.debug(f"  ✓ '{title}' — {skipped} symlinks up to date")
     return created
+
+
 
 def rescan_series(sonarr_series_id, title):
     """Tell Sonarr to rescan disk for a series."""
@@ -1014,35 +1103,20 @@ def rescan_series(sonarr_series_id, title):
 
 def symlink_and_rescan_all(plex, sonarr_map):
     """
-    Always symlink Plex files into Sonarr folders.
-    Only trigger rescan if AUTO_LINK is enabled.
+    For every series in Sonarr, find its files in the debrid folder and
+    symlink them in. Debrid paths are used directly so changes are always fresh.
     """
-    logger.info("🔗 Starting symlink pass...")
-    tv_lib    = plex.library.section(CONFIG["PLEX_TV_LIBRARY"])
+    logger.info("🔗 Starting debrid symlink pass...")
     total_new = 0
-    rescanned = 0
-    auto_link = CONFIG.get("AUTO_LINK", False)
 
-    for show in tv_lib.all():
-        tvdb_id = None
-        for guid in show.guids:
-            if "tvdb://" in guid.id:
-                try: tvdb_id = int(guid.id.replace("tvdb://", ""))
-                except ValueError: pass
-        if not tvdb_id or tvdb_id not in sonarr_map:
-            continue
-        sonarr_series = sonarr_map[tvdb_id]
-        created = symlink_series(show, sonarr_series)
+    for tvdb_id, sonarr_series in sonarr_map.items():
+        created = symlink_series(None, sonarr_series)
         total_new += created
         if created:
-            logger.info(f"  🔗 {show.title} — {created} new symlinks")
-            if auto_link:
-                rescan_series(sonarr_series["id"], sonarr_series["title"])
-                rescanned += 1
-                time.sleep(0.3)
+            time.sleep(0.3)
 
     if total_new:
-        logger.info(f"✅ Symlink pass — {total_new} new symlinks created, {rescanned} series rescanned")
+        logger.info(f"✅ Symlink pass complete — {total_new} new symlinks created")
     else:
         logger.debug("✅ Symlink pass — no new symlinks needed")
 
@@ -1115,7 +1189,7 @@ def do_initial_scan():
 
     logger.info(f"✅ Initial scan done — {added} added, {skipped_exists} already in Sonarr, {skipped_ended} ended/skipped")
 
-    # Always symlink episodes; AUTO_LINK controls whether rescan fires
+    # Always symlink episodes; AUTO_SYMLINK controls whether rescan fires
     logger.info("🔗 Symlinking episodes for all series...")
     sonarr_map = get_sonarr_series_map()
     symlink_and_rescan_all(plex, sonarr_map)
@@ -1165,23 +1239,23 @@ def do_watchdog_loop():
                 logger.info(f"🆕 New continuing show in Plex: {show.title} [{status}]")
                 add_series_to_sonarr(tvdb_id, show.title, quality_profile_id)
 
-            # Step 2: always check and repair broken symlinks
+            # Step 2: always repair broken symlinks
             sonarr_map = get_sonarr_series_map()
             broken = check_and_repair_symlinks(sonarr_map)
 
-            # Step 3: always create new symlinks for any new Plex episodes
-            # AUTO_LINK controls whether Sonarr rescan is triggered after
-            symlink_and_rescan_all(plex, sonarr_map)
-
-            # Step 4: if symlinks were repaired and AUTO_LINK is off,
-            # still rescan those series so Sonarr notices the fix
-            if broken and not CONFIG.get("AUTO_LINK", False):
+            # Step 3: only auto-symlink all if user enabled the toggle
+            if CONFIG.get("AUTO_SYMLINK", False):
+                logger.info("🔗 Auto-symlink enabled — syncing all series...")
+                symlink_and_rescan_all(plex, sonarr_map)
+            elif broken:
                 logger.info("🔍 Rescanning series with repaired symlinks...")
-                for tvdb_id, series in sonarr_map.items():
+                for sid, series in sonarr_map.items():
                     path = series.get("path", "")
                     if path and os.path.isdir(path):
                         rescan_series(series["id"], series["title"])
                         time.sleep(0.2)
+            else:
+                logger.debug("💤 Auto-symlink off — sync series manually from the Series page")
 
         except Exception as e:
             logger.error(f"Watchdog error: {e}")
